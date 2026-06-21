@@ -54,9 +54,12 @@ export class Embeddings extends Context.Service<Embeddings, {
         HttpClient.transformResponse(Effect.timeout("60 seconds"))
       )
 
+      const maxInputChars = Math.max(1000, indexing.embedTokenCap * 2)
+      const cap = (text: string) => (text.length > maxInputChars ? text.slice(0, maxInputChars) : text)
+
       const embedBatch = (batch: ReadonlyArray<string>) =>
         HttpClientRequest.post("/embeddings").pipe(
-          HttpClientRequest.bodyJsonUnsafe({ model: embedding.model, input: batch, dimensions }),
+          HttpClientRequest.bodyJsonUnsafe({ model: embedding.model, input: batch.map(cap), dimensions }),
           client.execute,
           Effect.flatMap((response) =>
             response.text.pipe(
