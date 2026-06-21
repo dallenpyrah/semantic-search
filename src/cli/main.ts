@@ -4,13 +4,14 @@ import { Argument, Command, Flag } from "effect/unstable/cli"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { resolve } from "node:path"
 import { AppConfig } from "../config/AppConfig.ts"
+import { CommitIndexer } from "../index/CommitIndexer.ts"
 import { Indexer } from "../index/Indexer.ts"
 import { Search } from "../search/Search.ts"
 import { Watcher } from "../watch/Watcher.ts"
-import { appLayer, configLayer } from "../runtime/layers.ts"
+import { type AppServices, appLayer, configLayer } from "../runtime/layers.ts"
 import type { SearchMode, SearchResult } from "../domain/types.ts"
 
-const provideApp = <A, E>(root: string, effect: Effect.Effect<A, E, Indexer | Search | Watcher | AppConfig>) =>
+const provideApp = <A, E>(root: string, effect: Effect.Effect<A, E, AppServices>) =>
   Effect.provide(effect, appLayer({ root: resolve(root), trusted: true }))
 
 const printResult = (result: SearchResult, json: boolean, search: Search["Service"]) =>
@@ -28,8 +29,9 @@ const index = Command.make(
         const indexer = yield* Indexer
         yield* Console.log(`Indexing ${resolve(cfg.path)} ...`)
         const stats = yield* indexer.indexAll()
+        const commits = yield* (yield* CommitIndexer).run()
         yield* Console.log(
-          `Indexed ${stats.files} files / ${stats.chunks} chunks into ${stats.namespace}`
+          `Indexed ${stats.files} files / ${stats.chunks} chunks + ${commits} commits into ${stats.namespace}`
         )
       })
     )

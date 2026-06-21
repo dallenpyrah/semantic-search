@@ -1,4 +1,5 @@
-import { Context, Effect, FileSystem, Layer, Option, Path } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Path, Stream } from "effect"
+import { readdir, stat } from "node:fs/promises"
 import { AppConfig } from "../config/AppConfig.ts"
 import { Chunker } from "../chunk/Chunker.ts"
 import { Embeddings } from "../embedding/Embeddings.ts"
@@ -7,7 +8,7 @@ import { Turbopuffer } from "../store/Turbopuffer.ts"
 import { rowFromChunk } from "../store/schema.ts"
 import { sha256 } from "../domain/hash.ts"
 import type { IndexStats } from "../domain/types.ts"
-import { compileRules, shouldEnterDir, shouldIndexFile } from "./ignore.ts"
+import { compileRules, shouldConsiderFile, shouldEnterDir, shouldIndexFile } from "./ignore.ts"
 
 interface Candidate {
   readonly rel: string
@@ -48,33 +49,32 @@ export class Indexer extends Context.Service<Indexer, {
 
       const relOf = (abs: string) => path.relative(root, abs).split(path.sep).join("/")
 
-      const walk = (dir: string): Effect.Effect<ReadonlyArray<Candidate>> =>
-        Effect.gen(function* () {
-          const names = yield* fs.readDirectory(dir).pipe(Effect.catch(() => Effect.succeed([])))
-          const found: Array<Candidate> = []
-          for (const name of names) {
-            const abs = path.join(dir, name)
-            const info = yield* fs.stat(abs).pipe(Effect.catch(() => Effect.succeed(undefined)))
-            if (!info) continue
-            if (info.type === "Directory") {
-              if (shouldEnterDir(name, rules)) {
-                const nested = yield* walk(abs)
-                for (const candidate of nested) found.push(candidate)
-              }
-              continue
-            }
-            if (info.type !== "File") continue
-            const rel = relOf(abs)
-            const size = Number(info.size)
-            if (!shouldIndexFile(rel, size, rules)) continue
-            const mtimeMs = Option.match(info.mtime, {
-              onNone: () => 0,
-              onSome: (date) => date.getTime()
-            })
-            found.push({ rel, abs, size, mtimeMs })
+      async function* walkGen(dir: string): AsyncGenerator<Candidate> {
+        let entries
+        try {
+          entries = await readdir(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          const abs = path.join(dir, entry.name)
+          if (entry.isDirectory()) {
+            if (shouldEnterDir(entry.name, rules)) yield* walkGen(abs)
+            continue
           }
-          return found
-        })
+          if (!entry.isFile()) continue
+          const rel = relOf(abs)
+          if (!shouldConsiderFile(rel, rules)) continue
+          let info
+          try {
+            info = await stat(abs)
+          } catch {
+            continue
+          }
+          if (!shouldIndexFile(rel, info.size, rules)) continue
+          yield { rel, abs, size: info.size, mtimeMs: info.mtimeMs }
+        }
+      }
 
       const removeFromIndex = (rel: string): Effect.Effect<void> =>
         manifest.remove(rel).pipe(
@@ -149,9 +149,18 @@ export class Indexer extends Context.Service<Indexer, {
 
       const indexAll = (): Effect.Effect<IndexStats> =>
         Effect.gen(function* () {
-          const candidates = yield* walk(root)
-          const seen = new Set(candidates.map((candidate) => candidate.rel))
-          yield* Effect.forEach(candidates, safeIndex, { concurrency, discard: true })
+          const seen = new Set<string>()
+          yield* Stream.fromAsyncIterable(walkGen(root), (cause) => cause).pipe(
+            Stream.mapEffect(
+              (candidate) => {
+                seen.add(candidate.rel)
+                return safeIndex(candidate)
+              },
+              { concurrency, unordered: true }
+            ),
+            Stream.runDrain,
+            Effect.catch(() => Effect.void)
+          )
           const known = yield* manifest.knownPaths()
           const removed = known.filter((rel) => !seen.has(rel))
           yield* Effect.forEach(removed, removeFromIndex, { concurrency, discard: true })

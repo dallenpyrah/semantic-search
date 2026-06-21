@@ -63,15 +63,16 @@ export const isWatchRelevant = (relPath: string, rules: IgnoreRules): boolean =>
   return !matchesPattern(lower, rules)
 }
 
-export const shouldIndexFile = (
-  relPath: string,
-  size: number,
-  rules: IgnoreRules
-): boolean => {
-  if (size <= 0 || size > rules.maxFileBytes) return false
+export const shouldConsiderFile = (relPath: string, rules: IgnoreRules): boolean => {
   const name = relPath.slice(relPath.lastIndexOf("/") + 1).toLowerCase()
   if (name.startsWith(".env")) return false
   if (rules.excludeFiles.has(name)) return false
   if (matchesPattern(relPath, rules)) return false
   return rules.includeExtensions.has(extensionOf(relPath))
 }
+
+export const shouldIndexFile = (
+  relPath: string,
+  size: number,
+  rules: IgnoreRules
+): boolean => size > 0 && size <= rules.maxFileBytes && shouldConsiderFile(relPath, rules)
