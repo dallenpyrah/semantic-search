@@ -222,10 +222,7 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     await start(ctx.cwd, ctx.isProjectTrusted())
-    if (!ctx.hasUI) return
-    if (state.enabled) {
-      ctx.ui.notify(`code search ready for ${state.projectName}`, "info")
-    } else {
+    if (ctx.hasUI && !state.enabled) {
       ctx.ui.notify(state.disabledReason, "warning")
     }
   })
