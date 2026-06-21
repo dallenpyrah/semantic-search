@@ -1,7 +1,17 @@
-import { Array as Arr, Context, Effect, Layer, Option, Redacted, Schedule, Schema, flow } from "effect"
+import { Context, Effect, Layer, Option, Redacted, Schedule, Schema, flow } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { AppConfig, requireKey } from "../config/AppConfig.ts"
 import { EmbedError } from "../domain/errors.ts"
+import {
+  DEFAULT_EMBEDDING_REQUEST_TOKEN_BUDGET,
+  classifyEmbeddingHttpStatus,
+  embeddingInputTokenLimit,
+  prepareEmbeddingInput,
+  providerErrorMessage,
+  providerErrorStatus,
+  splitEmbeddingRequests,
+  type PreparedEmbeddingInput
+} from "./EmbeddingInput.ts"
 import { VectorCache } from "./VectorCache.ts"
 
 const PROVIDERS = {
@@ -18,10 +28,57 @@ const retrySchedule = Schedule.exponential("200 millis", 2).pipe(
   Schedule.both(Schedule.recurs(5))
 )
 
+class EmbeddingRequestFailure extends Error {
+  readonly retryable: boolean
+  readonly status: number | undefined
+
+  constructor(
+    message: string,
+    options: {
+      readonly retryable: boolean
+      readonly status?: number
+      readonly cause?: unknown
+    }
+  ) {
+    super(message, { cause: options.cause })
+    this.name = "EmbeddingRequestFailure"
+    this.retryable = options.retryable
+    this.status = options.status
+  }
+}
+
 const messageOf = (error: unknown): string => {
   if (error instanceof Error) return error.message
   const message = (error as { message?: unknown })?.message
   return typeof message === "string" ? message : String(error)
+}
+
+const preview = (body: string): string => body.slice(0, 400)
+
+const providerErrorBody = (json: unknown, body: string): string => providerErrorMessage(json) ?? preview(body)
+
+const normalizeFailure = (endpoint: string, error: unknown): EmbeddingRequestFailure =>
+  error instanceof EmbeddingRequestFailure
+    ? error
+    : new EmbeddingRequestFailure(`${endpoint} failed: ${messageOf(error)}`, {
+        retryable: true,
+        cause: error
+      })
+
+const failForStatus = (
+  endpoint: string,
+  status: number,
+  body: string,
+  cause?: unknown
+): Effect.Effect<never, EmbeddingRequestFailure> => {
+  const classification = classifyEmbeddingHttpStatus(status)
+  return Effect.fail(
+    new EmbeddingRequestFailure(`${endpoint} -> HTTP ${status}: ${preview(body)}`, {
+      retryable: classification.retryable,
+      status,
+      cause
+    })
+  )
 }
 
 export class Embeddings extends Context.Service<Embeddings, {
@@ -54,64 +111,116 @@ export class Embeddings extends Context.Service<Embeddings, {
         HttpClient.transformResponse(Effect.timeout("60 seconds"))
       )
 
-      const maxInputChars = Math.max(1000, indexing.embedTokenCap * 2)
-      const cap = (text: string) => (text.length > maxInputChars ? text.slice(0, maxInputChars) : text)
+      const maxInputTokens = embeddingInputTokenLimit(indexing.embedTokenCap)
+      const endpoint = `POST ${baseUrl}/embeddings`
 
-      const embedBatch = (batch: ReadonlyArray<string>) =>
+      const embedBatch = (batch: ReadonlyArray<PreparedEmbeddingInput>) =>
         HttpClientRequest.post("/embeddings").pipe(
-          HttpClientRequest.bodyJsonUnsafe({ model: embedding.model, input: batch.map(cap), dimensions }),
+          HttpClientRequest.bodyJsonUnsafe({ model: embedding.model, input: batch.map((input) => input.text), dimensions }),
           client.execute,
           Effect.flatMap((response) =>
             response.text.pipe(
               Effect.flatMap((body: string) =>
                 response.status < 200 || response.status >= 300
-                  ? Effect.fail(new Error(`POST ${baseUrl}/embeddings -> HTTP ${response.status}: ${body.slice(0, 400)}`))
+                  ? failForStatus(endpoint, response.status, body)
                   : Effect.try({
                       try: () => JSON.parse(body) as unknown,
-                      catch: () => new Error(`non-JSON response (HTTP ${response.status}): ${body.slice(0, 400)}`)
+                      catch: (cause) =>
+                        new EmbeddingRequestFailure(`non-JSON embeddings response (HTTP ${response.status}): ${preview(body)}`, {
+                          retryable: false,
+                          status: response.status,
+                          cause
+                        })
                     }).pipe(
                       Effect.flatMap((json) => {
+                        const errorStatus = providerErrorStatus(json)
+                        if (errorStatus !== undefined) {
+                          const classification = classifyEmbeddingHttpStatus(errorStatus)
+                          return Effect.fail(
+                            new EmbeddingRequestFailure(
+                              `${endpoint} -> provider error HTTP ${errorStatus}: ${providerErrorBody(json, body)}`,
+                              {
+                                retryable: classification.retryable,
+                                status: errorStatus
+                              }
+                            )
+                          )
+                        }
                         const decoded = Schema.decodeUnknownOption(EmbeddingResponse)(json)
                         return Option.isSome(decoded)
                           ? Effect.succeed(decoded.value)
                           : Effect.fail(
-                              new Error(`unexpected embeddings response (HTTP ${response.status}): ${body.slice(0, 400)}`)
+                              new EmbeddingRequestFailure(
+                                `unexpected embeddings response (HTTP ${response.status}): ${preview(body)}`,
+                                {
+                                  retryable: false,
+                                  status: response.status
+                                }
+                              )
                             )
                       })
                     )
               )
             )
           ),
-          Effect.map((response) =>
-            [...response.data]
-              .sort((left, right) => left.index - right.index)
-              .map((item) => item.embedding as ReadonlyArray<number>)
-          ),
-          Effect.retry(retrySchedule),
+          Effect.flatMap((response) => {
+            const sorted = [...response.data].sort((left, right) => left.index - right.index)
+            if (
+              sorted.length !== batch.length ||
+              sorted.some((item, index) => item.index !== index)
+            ) {
+              return Effect.fail(
+                new EmbeddingRequestFailure(`unexpected embeddings response indexes for ${batch.length} inputs`, {
+                  retryable: false
+                })
+              )
+            }
+            return Effect.succeed(sorted.map((item) => item.embedding as ReadonlyArray<number>))
+          }),
+          Effect.mapError((error) => normalizeFailure(endpoint, error)),
+          Effect.retry({ schedule: retrySchedule, while: (error: EmbeddingRequestFailure) => error.retryable }),
           Effect.mapError(
             (error) =>
               new EmbedError({
                 message: `embedding request failed: ${messageOf(error)}`,
-                retryable: true,
+                retryable: error.retryable,
                 cause: error
               })
           )
         )
 
-      const embedViaApi = (texts: ReadonlyArray<string>) =>
-        Effect.forEach(Arr.chunksOf(texts, indexing.embedBatch), embedBatch, {
-          concurrency: indexing.embedConcurrency
-        }).pipe(Effect.map((results) => results.flat()))
+      const embedViaApi = (texts: ReadonlyArray<string>) => {
+        const prepared = texts.map((text) => prepareEmbeddingInput(text, maxInputTokens))
+        return Effect.forEach(
+          splitEmbeddingRequests(prepared, {
+            maxInputsPerRequest: indexing.embedBatch,
+            maxTokensPerRequest: DEFAULT_EMBEDDING_REQUEST_TOKEN_BUDGET
+          }),
+          embedBatch,
+          { concurrency: 1 }
+        ).pipe(Effect.map((results) => results.flat()))
+      }
 
       const embed = Effect.fn("Embeddings.embed")(function* (texts: ReadonlyArray<string>) {
         if (texts.length === 0) return [] as ReadonlyArray<ReadonlyArray<number>>
         if (!indexing.vectorCacheEnabled) return yield* embedViaApi(texts)
-        const keys = texts.map((text) => cache.keyOf(text))
+        const prepared = texts.map((text) => prepareEmbeddingInput(text, maxInputTokens))
+        const keys = prepared.map((input) => cache.keyOf(input.text))
         const cached = yield* cache.get(keys)
         const missIdx: Array<number> = []
         for (let i = 0; i < texts.length; i += 1) if (cached[i] === undefined) missIdx.push(i)
         if (missIdx.length === 0) return cached as ReadonlyArray<ReadonlyArray<number>>
-        const fresh = yield* embedViaApi(missIdx.map((i) => texts[i]!))
+        const fresh = yield* Effect.forEach(
+          splitEmbeddingRequests(
+            missIdx.map((i) => prepared[i]!),
+            {
+              maxInputsPerRequest: indexing.embedBatch,
+              maxTokensPerRequest: DEFAULT_EMBEDDING_REQUEST_TOKEN_BUDGET
+            }
+          ),
+          embedBatch,
+          { concurrency: 1 }
+        ).pipe(Effect.map((results) => results.flat()))
         const results = cached.slice()
         for (let j = 0; j < missIdx.length; j += 1) results[missIdx[j]!] = fresh[j]!
         yield* cache.put(missIdx.map((i, j) => [keys[i]!, fresh[j]!] as const))
