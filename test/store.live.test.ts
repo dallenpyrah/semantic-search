@@ -14,6 +14,7 @@ const live = Boolean(process.env.OPENAI_API_KEY && process.env.TURBOPUFFER_API_K
 
 const chunkOf = (id: string, path: string, text: string): Chunk => ({
   id,
+  source: "code",
   path,
   language: "typescript",
   kind: "code",

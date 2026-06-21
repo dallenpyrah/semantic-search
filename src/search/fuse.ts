@@ -71,18 +71,24 @@ export const diversify = (
   candidates: ReadonlyArray<Candidate>,
   limit: number,
   perFile: number,
-  pathPrefix: string | undefined
+  pathPrefix: string | undefined,
+  sourceQuotas?: Record<string, number>
 ): ReadonlyArray<Candidate> => {
   const prefix = normalizePrefix(pathPrefix)
   const counts = new Map<string, number>()
+  const sourceCounts = new Map<string, number>()
   const selected: Array<Candidate> = []
   for (const candidate of candidates) {
     const path = String(candidate.row.path ?? "")
     if (prefix && !path.toLowerCase().startsWith(prefix)) continue
+    const source = String(candidate.row.source ?? "code")
+    const quota = sourceQuotas?.[source]
+    if (quota !== undefined && (sourceCounts.get(source) ?? 0) >= quota) continue
     const count = counts.get(path) ?? 0
     if (count >= perFile) continue
     selected.push(candidate)
     counts.set(path, count + 1)
+    sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1)
     if (selected.length >= limit) break
   }
   if (selected.length >= limit || !prefix) return selected
@@ -109,6 +115,7 @@ export const toHit = (candidate: Candidate, query: string, snippetChars: number)
   const row = candidate.row
   return {
     id: candidate.id,
+    source: String(row.source ?? "code"),
     path: String(row.path ?? "unknown"),
     language: String(row.language ?? ""),
     kind: String(row.kind ?? ""),
@@ -120,6 +127,29 @@ export const toHit = (candidate: Candidate, query: string, snippetChars: number)
   }
 }
 
+const isoDate = (ts: unknown): string =>
+  typeof ts === "number" && ts > 0 ? new Date(ts * 1000).toISOString().slice(0, 10) : ""
+
+export const rerankDoc = (candidate: Candidate): string => {
+  const row = candidate.row
+  const source = String(row.source ?? "code")
+  const text = String(row.text ?? "")
+  if (source === "history") {
+    const sha = String(row.sha ?? "").slice(0, 7)
+    return `[commit ${sha} ${isoDate(row.committedAt)} ${String(row.author ?? "")}]\n${text}`
+  }
+  if (source === "conversation") {
+    return `[conversation ${isoDate(row.ts)} ${String(row.role ?? "")}]\n${text}`
+  }
+  return `${String(row.path ?? "")}\n\n${text}`
+}
+
+export const locationOf = (hit: SearchHit): string => {
+  if (hit.source === "history") return hit.path
+  if (hit.source === "conversation") return hit.path
+  return hit.startLine && hit.endLine ? `${hit.path}:${hit.startLine}-${hit.endLine}` : hit.path
+}
+
 export const formatHits = (
   query: string,
   hits: ReadonlyArray<SearchHit>,
@@ -128,13 +158,12 @@ export const formatHits = (
   if (hits.length === 0) {
     return `No indexed results for ${JSON.stringify(query)}. The index may still be warming.`
   }
-  const lines = [`Results for ${JSON.stringify(query)}:`]
+  const lines = [`Results for ${JSON.stringify(query)} (live code is authoritative; history/conversation are context):`]
   let bytes = lines[0]!.length
   for (let i = 0; i < hits.length; i += 1) {
     const hit = hits[i]!
-    const location =
-      hit.startLine && hit.endLine ? `${hit.path}:${hit.startLine}-${hit.endLine}` : hit.path
-    const block = `\n${i + 1}. ${location} [${hit.sources.join("+")}; ${hit.score.toFixed(4)}]\n${hit.snippet}`
+    const tag = hit.source === "code" ? "" : `[${hit.source}] `
+    const block = `\n${i + 1}. ${tag}${locationOf(hit)} [${hit.sources.join("+")}; ${hit.score.toFixed(4)}]\n${hit.snippet}`
     bytes += block.length
     if (bytes > maxBytes) break
     lines.push(block)

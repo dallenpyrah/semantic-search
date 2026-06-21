@@ -12,6 +12,10 @@ export interface IndexingConfig {
   readonly debounceMs: number
   readonly maxQueueSize: number
   readonly scanConcurrency: number
+  readonly historyEnabled: boolean
+  readonly historyMaxCommits: number
+  readonly conversationEnabled: boolean
+  readonly conversationMaxSessions: number
   readonly includeExtensions: ReadonlyArray<string>
   readonly includeDirs: ReadonlyArray<string>
   readonly excludeDirs: ReadonlyArray<string>
@@ -99,6 +103,10 @@ export const defaultSettings: Settings = {
     debounceMs: 400,
     maxQueueSize: 4096,
     scanConcurrency: 12,
+    historyEnabled: true,
+    historyMaxCommits: 2000,
+    conversationEnabled: false,
+    conversationMaxSessions: 40,
     includeExtensions: DEFAULT_INCLUDE_EXTENSIONS,
     includeDirs: [],
     excludeDirs: [

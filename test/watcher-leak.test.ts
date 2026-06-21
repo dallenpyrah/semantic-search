@@ -5,6 +5,7 @@ import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { AppConfig } from "../src/config/AppConfig.ts"
+import { CommitIndexer } from "../src/index/CommitIndexer.ts"
 import { Indexer } from "../src/index/Indexer.ts"
 import { Watcher } from "../src/watch/Watcher.ts"
 
@@ -18,6 +19,8 @@ const stubIndexer = Layer.succeed(
     stats: () => Effect.succeed({ namespace: "stub", root: "stub", files: 0, chunks: 0 })
   })
 )
+
+const stubCommits = Layer.succeed(CommitIndexer, CommitIndexer.of({ run: () => Effect.succeed(0) }))
 
 const resourceCounts = () => {
   const info = (process as { getActiveResourcesInfo?: () => ReadonlyArray<string> }).getActiveResourcesInfo?.() ?? []
@@ -38,6 +41,7 @@ describe("watcher resource lifecycle", () => {
 
     const layer = Watcher.layer.pipe(
       Layer.provide(stubIndexer),
+      Layer.provide(stubCommits),
       Layer.provide(AppConfig.layer({ root, trusted: true })),
       Layer.provide(NodeServices.layer)
     )

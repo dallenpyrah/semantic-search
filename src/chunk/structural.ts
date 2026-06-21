@@ -240,6 +240,7 @@ const buildChunk = (
   const embedText = clampChars(`${prefix}${raw}`, budget.embedCharCap)
   return {
     id: chunkId(path, symbol, raw),
+    source: kind === "docs" ? "docs" : "code",
     path,
     language,
     kind,

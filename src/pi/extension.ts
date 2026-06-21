@@ -3,21 +3,34 @@ import { Effect, Fiber, ManagedRuntime } from "effect"
 import { Type } from "typebox"
 import { basename } from "node:path"
 import { AppConfig } from "../config/AppConfig.ts"
+import { CommitIndexer } from "../index/CommitIndexer.ts"
+import { ConversationIndexer } from "../index/ConversationIndexer.ts"
+import { GitHistory } from "../index/GitHistory.ts"
 import { Indexer } from "../index/Indexer.ts"
 import { Search } from "../search/Search.ts"
 import { Turbopuffer } from "../store/Turbopuffer.ts"
 import { Watcher } from "../watch/Watcher.ts"
 import { type AppError, type AppServices, appLayer, configLayer } from "../runtime/layers.ts"
-import type { SearchMode, SearchOptions } from "../domain/types.ts"
-import { codeGrepTool, codeSearchTool } from "./tools.ts"
+import type { SearchMode, SearchOptions, SourceType } from "../domain/types.ts"
+import { codeGrepTool, codeHistoryTool, codeSearchTool } from "./tools.ts"
 
 const searchParameters = Type.Object({
-  query: Type.String({
-    description:
-      "Natural-language description of the code, behavior, concept, symbol, or error you are looking for"
-  }),
+  query: Type.Optional(
+    Type.String({
+      description:
+        "Natural-language description of the code, behavior, concept, symbol, or error you are looking for"
+    })
+  ),
+  queries: Type.Optional(
+    Type.Array(Type.String(), {
+      minItems: 2,
+      maxItems: 5,
+      description:
+        "2-5 DISTINCT facets to retrieve and merge in one parallel call (use instead of query for multi-faceted tasks)"
+    })
+  ),
   limit: Type.Optional(
-    Type.Number({ minimum: 1, maximum: 25, description: "Maximum ranked snippets to return (default 8)" })
+    Type.Number({ minimum: 1, maximum: 25, description: "Maximum ranked snippets total across all facets (default 8)" })
   ),
   pathPrefix: Type.Optional(
     Type.String({ description: "Restrict to a repository-relative directory prefix, e.g. packages/api" })
@@ -27,8 +40,24 @@ const searchParameters = Type.Object({
   )
 })
 
+const historyParameters = Type.Object({
+  query: Type.Optional(
+    Type.String({ description: "What to look for in commit history (e.g. 'why did we change cache eviction')" })
+  ),
+  file: Type.Optional(
+    Type.String({ description: "Repository-relative file path to show the actual commit history and diffs that changed it" })
+  ),
+  lines: Type.Optional(
+    Type.String({ description: "Optional line range like 40-80 to show only that region's change history (with file)" })
+  ),
+  limit: Type.Optional(Type.Number({ minimum: 1, maximum: 30, description: "Maximum commits to return (default 10)" }))
+})
+
 interface SearchParams {
-  readonly query: string
+  readonly query?: string
+  readonly queries?: ReadonlyArray<string>
+  readonly file?: string
+  readonly lines?: string
   readonly limit?: number
   readonly pathPrefix?: string
   readonly language?: string
@@ -53,12 +82,19 @@ const textResult = (text: string, details: Record<string, unknown>): ToolResult 
   details
 })
 
-const toOptions = (params: SearchParams, rerank: boolean): SearchOptions => ({
+const toOptions = (params: SearchParams, source?: ReadonlyArray<SourceType>): SearchOptions => ({
   limit: typeof params.limit === "number" ? params.limit : 8,
   pathPrefix: params.pathPrefix?.trim() ? params.pathPrefix.trim() : undefined,
   language: params.language?.trim() ? params.language.trim() : undefined,
-  rerank
+  source
 })
+
+const facetsOf = (params: SearchParams): ReadonlyArray<string> => {
+  const fromArray = (params.queries ?? []).map((q) => q.trim()).filter(Boolean)
+  if (fromArray.length > 0) return fromArray
+  const single = params.query?.trim()
+  return single ? [single] : []
+}
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -125,6 +161,10 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
         Effect.gen(function* () {
           const indexer = yield* Indexer
           yield* indexer.indexAll()
+          const commits = yield* CommitIndexer
+          yield* commits.run()
+          const conversations = yield* ConversationIndexer
+          yield* conversations.run()
         })
       )
     ]
@@ -133,19 +173,17 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
   const runSearch = async (
     mode: SearchMode,
     params: SearchParams,
-    signal: AbortSignal | undefined
+    signal: AbortSignal | undefined,
+    source?: ReadonlyArray<SourceType>
   ): Promise<ToolResult> => {
     const rt = runtime
     if (!rt || !state.enabled) return textResult(state.disabledReason, { enabled: false })
-    const query = params.query?.trim()
-    if (!query) return textResult("query is required", { enabled: true, error: "missing query" })
-    const rerank = mode === "hybrid"
+    const facets = facetsOf(params)
+    if (facets.length === 0) return textResult("query or queries is required", { enabled: true, error: "missing query" })
     const program = Effect.gen(function* () {
       const search = yield* Search
-      const options = toOptions({ ...params, query }, rerank)
-      const value = mode === "semantic"
-        ? yield* search.semantic(query, options)
-        : yield* search.hybrid(query, options)
+      const options = toOptions(params, source)
+      const value = yield* search.search(mode, facets, options)
       return { value, formatted: search.formatted(value) }
     })
     try {
@@ -199,5 +237,31 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
     parameters: searchParameters,
     execute: (_toolCallId: string, params: SearchParams, signal?: AbortSignal) =>
       runSearch("hybrid", params, signal)
+  })
+
+  const runFileHistory = async (params: SearchParams, signal: AbortSignal | undefined): Promise<ToolResult> => {
+    const rt = runtime
+    if (!rt || !state.enabled) return textResult(state.disabledReason, { enabled: false })
+    const file = params.file?.trim()
+    if (!file) return textResult("file is required", { enabled: true, error: "missing file" })
+    try {
+      const text = await rt.runPromise(
+        Effect.gen(function* () {
+          const history = yield* GitHistory
+          return yield* history.fileLog(file, { lines: params.lines, limit: params.limit })
+        }),
+        signal ? { signal } : undefined
+      )
+      return textResult(text, { source: "history", file, lines: params.lines ?? null })
+    } catch (error) {
+      return textResult(`git history failed: ${messageOf(error)}`, { enabled: true, error: messageOf(error) })
+    }
+  }
+
+  pi.registerTool({
+    ...codeHistoryTool,
+    parameters: historyParameters,
+    execute: (_toolCallId: string, params: SearchParams, signal?: AbortSignal) =>
+      params.file?.trim() ? runFileHistory(params, signal) : runSearch("hybrid", params, signal, ["history"])
   })
 }

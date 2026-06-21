@@ -33,6 +33,7 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
   replaceFile(path: string, rows: ReadonlyArray<UpsertRow>): Effect.Effect<void, StoreError>
   deleteIds(ids: ReadonlyArray<string>): Effect.Effect<void, StoreError>
   deleteFiles(paths: ReadonlyArray<string>): Effect.Effect<void, StoreError>
+  deleteByFilter(filter: unknown): Effect.Effect<void, StoreError>
   query(body: MultiQueryBody): Effect.Effect<MultiQueryResponse, StoreError>
   warm(): Effect.Effect<void>
   clear(): Effect.Effect<void, StoreError>
@@ -111,6 +112,9 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
               delete_by_filter: ["Or", paths.map((path) => ["path", "Eq", path])]
             })
 
+      const deleteByFilter = (filter: unknown): Effect.Effect<void, StoreError> =>
+        write({ distance_metric: "cosine_distance", schema, delete_by_filter: filter })
+
       const query = Effect.fn("Turbopuffer.query")(function* (body: MultiQueryBody) {
         const withConsistency: MultiQueryBody = { consistency: { level: consistency }, ...body }
         return yield* HttpClientRequest.post(`/v2/namespaces/${namespace}/query`).pipe(
@@ -147,6 +151,7 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
         replaceFile,
         deleteIds,
         deleteFiles,
+        deleteByFilter,
         query,
         warm,
         clear

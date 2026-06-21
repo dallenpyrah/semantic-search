@@ -26,11 +26,16 @@ export interface RuntimeConfig {
   readonly missingRequired: ReadonlyArray<string>
 }
 
+export interface AppConfigInput {
+  readonly root: string
+  readonly trusted: boolean
+  readonly namespaceOverride?: string
+}
+
 export class AppConfig extends Context.Service<AppConfig, RuntimeConfig>()(
   "semantic-search/AppConfig"
 ) {
-  static layer = (input: { readonly root: string; readonly trusted: boolean }) =>
-    Layer.effect(AppConfig, build(input))
+  static layer = (input: AppConfigInput) => Layer.effect(AppConfig, build(input))
 }
 
 export const requireKey = (
@@ -44,7 +49,7 @@ export const requireKey = (
 
 const agentDir = (): string => process.env.PI_CODING_AGENT_DIR ?? `${homedir()}/.pi/agent`
 
-const build = (input: { readonly root: string; readonly trusted: boolean }) =>
+const build = (input: AppConfigInput) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -76,8 +81,8 @@ const build = (input: { readonly root: string; readonly trusted: boolean }) =>
       root,
       trusted: input.trusted,
       agentDir: dir,
-      cacheDir: path.join(dir, "semantic-search", shortHash(root, 16)),
-      namespace: namespaceFor(settings, root),
+      cacheDir: path.join(dir, "semantic-search", shortHash(input.namespaceOverride ?? root, 16)),
+      namespace: input.namespaceOverride ?? namespaceFor(settings, root),
       settings,
       keys,
       missingRequired

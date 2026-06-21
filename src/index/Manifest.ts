@@ -13,9 +13,10 @@ interface ManifestData {
   readonly root: string
   readonly namespace: string
   readonly files: Record<string, FileEntry>
+  readonly meta: Record<string, string>
 }
 
-const VERSION = 1
+const VERSION = 2
 
 export class Manifest extends Context.Service<Manifest, {
   fileEntry(path: string): Effect.Effect<Option.Option<FileEntry>>
@@ -23,6 +24,8 @@ export class Manifest extends Context.Service<Manifest, {
   remove(path: string): Effect.Effect<ReadonlyArray<string>>
   knownPaths(): Effect.Effect<ReadonlyArray<string>>
   stats(): Effect.Effect<{ readonly files: number; readonly chunks: number }>
+  getMeta(key: string): Effect.Effect<Option.Option<string>>
+  setMeta(key: string, value: string): Effect.Effect<void>
   reset(): Effect.Effect<void>
   save(): Effect.Effect<void>
 }>()("semantic-search/Manifest") {
@@ -38,7 +41,8 @@ export class Manifest extends Context.Service<Manifest, {
         version: VERSION,
         root: config.root,
         namespace: config.namespace,
-        files: {}
+        files: {},
+        meta: {}
       }
 
       const loaded = yield* fs.readFileString(file).pipe(
@@ -84,6 +88,10 @@ export class Manifest extends Context.Service<Manifest, {
               return { files: files.length, chunks }
             })
           ),
+        getMeta: (key) =>
+          Ref.get(ref).pipe(Effect.map((data) => Option.fromNullishOr(data.meta[key]))),
+        setMeta: (key, value) =>
+          Ref.update(ref, (data) => ({ ...data, meta: { ...data.meta, [key]: value } })),
         reset: () => Ref.set(ref, empty),
         save
       })

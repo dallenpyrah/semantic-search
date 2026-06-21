@@ -1,7 +1,12 @@
 export type ChunkKind = "code" | "docs" | "config" | "test"
 
+export type SourceType = "code" | "docs" | "history" | "conversation"
+
+export const ALL_SOURCES: ReadonlyArray<SourceType> = ["code", "docs", "history", "conversation"]
+
 export interface Chunk {
   readonly id: string
+  readonly source: SourceType
   readonly path: string
   readonly language: string
   readonly kind: ChunkKind
@@ -18,6 +23,7 @@ export interface Chunk {
 
 export interface SearchHit {
   readonly id: string
+  readonly source: string
   readonly path: string
   readonly language: string
   readonly kind: string
@@ -45,6 +51,7 @@ export interface SearchOptions {
   readonly pathPrefix?: string
   readonly language?: string
   readonly kind?: ChunkKind
+  readonly source?: ReadonlyArray<SourceType>
   readonly rerank?: boolean
   readonly perFile?: number
 }
