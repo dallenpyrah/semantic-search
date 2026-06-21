@@ -44,6 +44,25 @@ Consolidating from three tools to one did not reduce adoption. Routing is correc
 true-grep task goes to `grep`, not `semantic_search`. The flow is `read(SKILL.md)` → `semantic_search`
 → `read(target file)`.
 
+## Large-repo indexing (plusone, real)
+
+Full cold index of a real monorepo — **2,160 source files → 11,545 chunks + 1,460 git commits**
+(the repo has 15k tracked files, but 14.8k are vendored under `repos/` and correctly excluded).
+
+| Metric | Value |
+|---|---|
+| Wall clock | **268s (~4.5 min)** |
+| Peak memory footprint | **363MB** |
+| Max RSS | 856MB (JSC reserved heap; live working set stayed 44–167MB) |
+| Embeddings | OpenRouter `text-embedding-3-large` @ 3072d (one key with the reranker) |
+
+Pipeline: a native streaming `readdir` walk feeds `prepareFile` (read/hash/chunk/diff) at
+`scanConcurrency`, which offers each file's new chunks into a **`Queue.bounded`** (suspend strategy →
+the producer blocks when full, so memory is hard-bounded); `embedConcurrency` consumers batch chunks
+**across files** into bulk embedding calls, upsert, then finalize each file's manifest entry once all its
+chunks land. Incremental re-index is ~free (content-hash gate). Tunable via `embedBatch` /
+`embedConcurrency` (defaults 128 / 4 favor memory; raise for faster at higher peak memory).
+
 ## Multi-source + CoIR
 
 - **Sources:** `code` (authoritative), `docs`, `history` (git commits), `conversation` (Pi sessions,
