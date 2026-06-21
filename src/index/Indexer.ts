@@ -286,11 +286,12 @@ export class Indexer extends Context.Service<Indexer, {
             }
           })
 
-          const upsertWorker = Effect.gen(function* () {
-            while (true) {
-              const job = yield* Queue.take(upsertQueue)
-              if (job === null) return
-              const ok = yield* store.upsert(job.rows).pipe(
+          const upsertTarget = config.settings.indexing.upsertBatch
+          const flush = (jobs: ReadonlyArray<UpsertJob>): Effect.Effect<void> =>
+            Effect.gen(function* () {
+              if (jobs.length === 0) return
+              const rows = jobs.flatMap((job) => job.rows)
+              const ok = yield* store.upsert(rows).pipe(
                 Effect.as(true),
                 Effect.catch((error) =>
                   Effect.logWarning("semantic-search: upsert failed, leaving files for retry next run", error).pipe(
@@ -298,8 +299,26 @@ export class Indexer extends Context.Service<Indexer, {
                   )
                 )
               )
-              processed += job.rows.length
-              if (ok) yield* finalize(job.paths)
+              processed += rows.length
+              if (ok) yield* finalize(jobs.flatMap((job) => job.paths))
+            })
+
+          const upsertWorker = Effect.gen(function* () {
+            let buffer: Array<UpsertJob> = []
+            let buffered = 0
+            while (true) {
+              const job = yield* Queue.take(upsertQueue)
+              if (job === null) {
+                yield* flush(buffer)
+                return
+              }
+              buffer.push(job)
+              buffered += job.rows.length
+              if (buffered >= upsertTarget) {
+                yield* flush(buffer)
+                buffer = []
+                buffered = 0
+              }
             }
           })
 

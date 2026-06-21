@@ -105,7 +105,7 @@ export const defaultSettings: Settings = {
     embedBatch: 128,
     embedConcurrency: 10,
     upsertConcurrency: 4,
-    upsertBatch: 256,
+    upsertBatch: 512,
     vectorCacheEnabled: true,
     debounceMs: 400,
     maxQueueSize: 4096,
