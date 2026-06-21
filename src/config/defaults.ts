@@ -76,6 +76,8 @@ export interface SettingsOverride {
 
 export const SCHEMA_VERSION = "v3"
 
+export const PROMPT_VERSION = "p1"
+
 export const defaultSettings: Settings = {
   embedding: {
     provider: "openrouter",

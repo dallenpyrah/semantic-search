@@ -1,5 +1,6 @@
 import { Context, Effect, FileSystem, Layer, Path } from "effect"
 import { AppConfig } from "../config/AppConfig.ts"
+import { PROMPT_VERSION } from "../config/defaults.ts"
 import { sha256 } from "../domain/hash.ts"
 
 const FLOAT_BYTES = 4
@@ -16,7 +17,7 @@ export class VectorCache extends Context.Service<VectorCache, {
       const fs = yield* FileSystem.FileSystem
       const path = yield* Path.Path
       const dims = config.settings.embedding.dimensions
-      const slug = `${config.settings.embedding.model.replace(/[^a-zA-Z0-9]+/g, "-")}_${dims}`
+      const slug = `${config.settings.embedding.model.replace(/[^a-zA-Z0-9]+/g, "-")}_${dims}_${PROMPT_VERSION}`
       const root = path.join(config.agentDir, "semantic-search", "vec", slug)
       const concurrency = config.settings.indexing.scanConcurrency
       const fileOf = (key: string) => path.join(root, key.slice(0, 2), key)

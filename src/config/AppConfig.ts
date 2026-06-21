@@ -3,6 +3,7 @@ import { homedir } from "node:os"
 import { ConfigError } from "../domain/errors.ts"
 import {
   defaultSettings,
+  PROMPT_VERSION,
   SCHEMA_VERSION,
   type Settings,
   type SettingsOverride
@@ -106,6 +107,7 @@ const settingsSignature = (settings: Settings): string =>
   JSON.stringify({
     model: settings.embedding.model,
     dims: settings.embedding.dimensions,
+    prompt: PROMPT_VERSION,
     target: settings.indexing.chunkTargetChars,
     max: settings.indexing.chunkMaxChars,
     extensions: settings.indexing.includeExtensions,

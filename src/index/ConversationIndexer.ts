@@ -13,7 +13,13 @@ const SECRET_PATTERNS: ReadonlyArray<RegExp> = [
   /sk-[A-Za-z0-9_-]{16,}/g,
   /\b(?:bearer|token|api[_-]?key|secret|password)\s*[:=]\s*\S+/gi,
   /\b[A-Z0-9_]{2,}_(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*\S+/g,
-  /\b[A-Fa-f0-9]{40,}\b/g
+  /\b[A-Fa-f0-9]{40,}\b/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b/g,
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
+  /\bAIza[0-9A-Za-z_-]{35}\b/g,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
+  /-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/g
 ]
 
 const redact = (text: string): string =>
@@ -140,7 +146,15 @@ export class ConversationIndexer extends Context.Service<ConversationIndexer, {
 
       const run = (): Effect.Effect<number> =>
         Effect.gen(function* () {
-          if (!indexing.conversationEnabled) return 0
+          if (!indexing.conversationEnabled) {
+            const purged = yield* manifest.getMeta(META_KEY)
+            if (Option.isSome(purged)) {
+              yield* store.deleteByFilter(["source", "Eq", "conversation"]).pipe(Effect.catch(() => Effect.void))
+              yield* manifest.setMeta(META_KEY, "")
+              yield* manifest.save()
+            }
+            return 0
+          }
           const lastRun = yield* manifest.getMeta(META_KEY)
           const since = Option.match(lastRun, { onNone: () => 0, onSome: (value) => Number(value) || 0 })
           const files = sessionFiles(since)
