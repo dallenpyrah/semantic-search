@@ -74,7 +74,9 @@ const build = (input: AppConfigInput) =>
     )
 
     const missingRequired: Array<string> = []
-    if (Option.isNone(keys.openai)) missingRequired.push("OPENAI_API_KEY")
+    const embedKey = settings.embedding.provider === "openai" ? keys.openai : keys.openrouter
+    const embedKeyName = settings.embedding.provider === "openai" ? "OPENAI_API_KEY" : "OPENROUTER_API_KEY"
+    if (Option.isNone(embedKey)) missingRequired.push(embedKeyName)
     if (Option.isNone(keys.turbopuffer)) missingRequired.push("TURBOPUFFER_API_KEY")
 
     return AppConfig.of({

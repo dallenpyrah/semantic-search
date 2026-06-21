@@ -5,11 +5,18 @@ import { OpenAiClient, OpenAiEmbeddingModel } from "@effect/ai-openai"
 import { AppConfig, requireKey } from "../config/AppConfig.ts"
 import { EmbedError } from "../domain/errors.ts"
 
+const PROVIDERS = {
+  openrouter: { url: "https://openrouter.ai/api/v1", keyName: "OPENROUTER_API_KEY" },
+  openai: { url: "https://api.openai.com/v1", keyName: "OPENAI_API_KEY" }
+} as const
+
 const clientLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* AppConfig
-    const apiKey = yield* requireKey(config.keys.openai, "OPENAI_API_KEY")
-    return OpenAiClient.layer({ apiKey, apiUrl: config.settings.embedding.baseUrl })
+    const provider = PROVIDERS[config.settings.embedding.provider]
+    const key = config.settings.embedding.provider === "openai" ? config.keys.openai : config.keys.openrouter
+    const apiKey = yield* requireKey(key, provider.keyName)
+    return OpenAiClient.layer({ apiKey, apiUrl: config.settings.embedding.baseUrl ?? provider.url })
   })
 ).pipe(Layer.provide(FetchHttpClient.layer))
 

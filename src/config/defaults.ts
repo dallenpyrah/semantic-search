@@ -24,9 +24,10 @@ export interface IndexingConfig {
 }
 
 export interface EmbeddingConfig {
+  readonly provider: "openrouter" | "openai"
   readonly model: string
   readonly dimensions: number
-  readonly baseUrl: string
+  readonly baseUrl?: string
 }
 
 export interface StoreConfig {
@@ -75,9 +76,9 @@ export const SCHEMA_VERSION = "v2"
 
 export const defaultSettings: Settings = {
   embedding: {
+    provider: "openrouter",
     model: "text-embedding-3-large",
-    dimensions: 3072,
-    baseUrl: "https://api.openai.com/v1"
+    dimensions: 3072
   },
   store: {
     region: "gcp-us-central1",

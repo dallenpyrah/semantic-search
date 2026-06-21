@@ -6,8 +6,9 @@
 
 </div>
 
-Backed by [TurboPuffer](https://turbopuffer.com) (vector + BM25), OpenAI `text-embedding-3-large`
-embeddings, and a Cohere `rerank-v3.5` reranker. Built entirely in [Effect v4](https://effect.website).
+Backed by [TurboPuffer](https://turbopuffer.com) (vector + BM25), `text-embedding-3-large`
+embeddings and a Cohere `rerank-v3.5` reranker — both via [OpenRouter](https://openrouter.ai) (one key).
+Built entirely in [Effect v4](https://effect.website).
 
 It gives a coding agent **one** tool — `semantic_search` — driven by config options (`query`,
 `queries[]` for parallel facets, `mode`, `source`, `file`/`lines` for git diffs, `pathPrefix`,
@@ -35,9 +36,9 @@ watches for file changes. It stops on `session_shutdown`.
 1. Point Pi at the extension (auto-discovered if placed under `~/.pi/agent/extensions/`, or add the
    path to `settings.json` `extensions`). The skill lives in `skills/code-search`.
 2. Provide credentials via environment or `~/.pi/agent/semantic-search.env`:
-   - `OPENAI_API_KEY` (required — embeddings)
+   - `OPENROUTER_API_KEY` (required — embeddings + reranker, one key)
    - `TURBOPUFFER_API_KEY` + `TURBOPUFFER_REGION` (required — storage)
-   - `OPENROUTER_API_KEY` (optional — reranker; search still works without it)
+   - `OPENAI_API_KEY` (only if you set `embedding.provider` to `openai` to call OpenAI directly)
 
 If a required key is missing the extension disables itself cleanly and tells you which key to set.
 
