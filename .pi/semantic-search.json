@@ -1,0 +1,5 @@
+{
+  "indexing": {
+    "excludeDirs": ["eval", "research", "scratch"]
+  }
+}

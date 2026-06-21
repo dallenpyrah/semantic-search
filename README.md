@@ -1,0 +1,91 @@
+<div align="center">
+
+# semantic-search
+
+**Effect-native semantic + hybrid code search — a Pi coding-agent extension and a standalone CLI.**
+
+</div>
+
+Backed by [TurboPuffer](https://turbopuffer.com) (vector + BM25), OpenAI `text-embedding-3-large`
+embeddings, and a Cohere `rerank-v3.5` reranker. Built entirely in [Effect v4](https://effect.website).
+
+It gives a coding agent two tools — `code_search` (find code by meaning) and `code_grep` (ranked
+exact-token + related code) — so it answers "where / how is X" in one call instead of many
+grep-then-read round-trips. The index is built and kept fresh automatically while a session is open.
+
+## Why
+
+- **Fewer tool calls, less context.** One ranked call with file path + line range replaces a loop of
+  guessing greps and whole-file reads.
+- **Better answers.** Hybrid retrieval (semantic ANN + BM25) fused and cross-encoder reranked.
+  Success@10 97%, nDCG@10 0.90 on the project's own eval (`docs/BENCHMARKS.md`).
+- **The agent actually uses it.** Tool descriptions + a skill tuned until adoption hit 4/4 with zero
+  grep fallback (`docs/BENCHMARKS.md`).
+- **Safe to run for hours.** Incremental indexing (only changed chunks re-embed), a bounded watcher
+  queue, scoped resources, and a leak test that asserts no watcher/timer growth.
+
+## Install (as a Pi extension)
+
+The extension auto-starts on `session_start`: it indexes the project, warms the namespace, and
+watches for file changes. It stops on `session_shutdown`.
+
+1. Point Pi at the extension (auto-discovered if placed under `~/.pi/agent/extensions/`, or add the
+   path to `settings.json` `extensions`). The skill lives in `skills/code-search`.
+2. Provide credentials via environment or `~/.pi/agent/semantic-search.env`:
+   - `OPENAI_API_KEY` (required — embeddings)
+   - `TURBOPUFFER_API_KEY` + `TURBOPUFFER_REGION` (required — storage)
+   - `OPENROUTER_API_KEY` (optional — reranker; search still works without it)
+
+If a required key is missing the extension disables itself cleanly and tells you which key to set.
+
+## Standalone CLI
+
+```bash
+bun src/cli/main.ts index .                 # embed + index a codebase
+bun src/cli/main.ts search "where do we validate auth tokens" --root .
+bun src/cli/main.ts search "validateToken" --mode hybrid --root .
+bun src/cli/main.ts watch .                 # index, then keep fresh on file changes
+bun src/cli/main.ts status .
+bun src/cli/main.ts clear . --force
+bun src/cli/main.ts config .                # print resolved configuration
+```
+
+`--json` emits machine-readable output; `--limit`, `--path`, `--language` scope results.
+
+## Configuration
+
+Resolution order (later overrides earlier): built-in defaults → global
+`~/.pi/agent/semantic-search.json` → project `.pi/semantic-search.json` (trusted projects only).
+
+Control which folders are indexed globally — e.g. `~/.pi/agent/semantic-search.json`:
+
+```json
+{
+  "indexing": {
+    "excludeDirs": ["fixtures", "generated"],
+    "excludePathPatterns": ["**/*.pb.go"]
+  }
+}
+```
+
+`excludeDirs` / `excludeFiles` / `excludePathPatterns` merge additively over a sensible base
+(`node_modules`, `.git`, `dist`, lockfiles, minified files, …). See `src/config/defaults.ts`.
+
+## Architecture
+
+See `docs/ARCHITECTURE.md`. Deep modules behind narrow `Effect` services: `Embeddings`,
+`Turbopuffer`, `Reranker`, `Chunker`, `Manifest`, `Indexer`, `Watcher`, `Search` — composed into one
+layer, run as a `ManagedRuntime` inside Pi and via `effect/unstable/cli` standalone.
+
+## Develop
+
+```bash
+bun install
+bun run typecheck
+bun test                # unit + leak tests; *.live.test.ts hit the real APIs when keys are set
+bun eval/retrieval.ts   # retrieval quality scorecard
+```
+
+## License
+
+Apache-2.0.
