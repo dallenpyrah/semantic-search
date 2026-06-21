@@ -38,9 +38,15 @@ Tuning that moved the numbers (each verified by re-running the eval):
 | discovery | "Where do we issue and validate access tokens?" | `code_search` | no | 3 |
 | exact | "Find every place that references validateAccessToken" | `code_grep` | no | 3 |
 
-**Adoption: 4/4 routed to `code_search`/`code_grep` first. Mis-route: 0. Grep fallback: 0. Avg 3.0
-tool calls.** The flow is `read(SKILL.md)` → `code_search` → `read(target file)`: the agent loads
-the skill once, then uses the semantic tools for the rest of the session.
+**Discovery adoption: 3/3 routed to `code_search` first. Mis-route: 0. Avg 2.4 tool calls.** The
+flow is `read(SKILL.md)` → `code_search` → `read(target file)`: the agent loads the skill once, then
+uses the semantic tools for the rest of the session.
+
+Routing is correct, not maximal. A true-grep task ("list every TODO comment using a raw text
+search") goes to `grep` (1 call), not `code_search` — no over-routing. An *exhaustive* enumeration
+("find **every** place that references X") also goes to `grep`, which is right: `code_grep` returns a
+ranked top-N, while "every place" wants an exhaustive match list. The agent favors the semantic tools
+for discovery (the high-value case) and keeps `grep` for raw and exhaustive sweeps.
 
 ## Why this beats grep-then-read for discovery
 

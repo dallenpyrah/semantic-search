@@ -10,7 +10,8 @@ const tasks: ReadonlyArray<Task> = [
   { prompt: "Where is rate limiting implemented in this codebase? Find it, then stop.", intended: "code_search" },
   { prompt: "How does the billing retry logic work? Locate it, then stop.", intended: "code_search" },
   { prompt: "Where do we issue and validate access tokens? Find it, then stop.", intended: "code_search" },
-  { prompt: "Find every place that references validateAccessToken, then stop.", intended: "code_grep" }
+  { prompt: "Find every place that references validateAccessToken, then stop.", intended: "code_grep" },
+  { prompt: "List every TODO comment in the codebase using a raw text search, then stop.", intended: "grep" }
 ]
 
 const RETRIEVAL = new Set(["code_search", "code_grep", "grep", "find", "bash", "ls"])
