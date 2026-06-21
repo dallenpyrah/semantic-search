@@ -91,6 +91,16 @@ const build = (input: AppConfigInput) =>
     if (Option.isNone(embedKey)) missingRequired.push(embedKeyName)
     if (Option.isNone(keys.turbopuffer)) missingRequired.push("TURBOPUFFER_API_KEY")
 
+    const keyValue = envValue(embedKeyName)
+    const keySource = fileEnv[embedKeyName] ? "file" : process.env[embedKeyName] ? "ambient" : "none"
+    yield* Effect.logInfo(
+      `semantic-search diag: provider=${settings.embedding.provider} dims=${settings.embedding.dimensions} ` +
+        `embedKey=${embedKeyName}#${keyValue ? keyValue.slice(-6) : "MISSING"}(${keySource}) ` +
+        `baseUrl=${settings.embedding.baseUrl ?? "default"} ` +
+        `ambient[OPENAI=${process.env.OPENAI_API_KEY ? "set" : "unset"},OPENROUTER=${process.env.OPENROUTER_API_KEY ? "set" : "unset"}] ` +
+        `envFileKeys=[${Object.keys(fileEnv).join(",")}] agentDir=${dir}`
+    )
+
     return AppConfig.of({
       root,
       trusted: input.trusted,
