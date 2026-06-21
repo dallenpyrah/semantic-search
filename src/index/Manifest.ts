@@ -1,20 +1,26 @@
-import { Context, Effect, FileSystem, Layer, Option, Path, Ref } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Path, Ref, Schema } from "effect"
 import { AppConfig } from "../config/AppConfig.ts"
 
-export interface FileEntry {
-  readonly fileHash: string
-  readonly chunkIds: ReadonlyArray<string>
-  readonly size: number
-  readonly mtimeMs: number
-}
+const FileEntrySchema = Schema.Struct({
+  fileHash: Schema.String,
+  chunkIds: Schema.Array(Schema.String),
+  size: Schema.Number,
+  mtimeMs: Schema.Number
+})
 
-interface ManifestData {
-  readonly version: number
-  readonly root: string
-  readonly namespace: string
-  readonly files: Record<string, FileEntry>
-  readonly meta: Record<string, string>
-}
+export type FileEntry = typeof FileEntrySchema.Type
+
+const ManifestSchema = Schema.Struct({
+  version: Schema.Number,
+  root: Schema.String,
+  namespace: Schema.String,
+  files: Schema.Record(Schema.String, FileEntrySchema),
+  meta: Schema.Record(Schema.String, Schema.String)
+})
+
+type ManifestData = typeof ManifestSchema.Type
+
+const decodeManifest = Schema.decodeUnknownOption(ManifestSchema)
 
 const VERSION = 2
 
@@ -45,10 +51,13 @@ export class Manifest extends Context.Service<Manifest, {
         meta: {}
       }
 
-      const loaded = yield* fs.readFileString(file).pipe(
-        Effect.map((text) => JSON.parse(text) as ManifestData),
-        Effect.catch(() => Effect.succeed(empty))
-      )
+      const text = yield* fs.readFileString(file).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      const parsed = text === undefined ? undefined : yield* Effect.try(() => JSON.parse(text) as unknown).pipe(Effect.catch(() => Effect.succeed(undefined)))
+      const decoded = parsed === undefined ? Option.none<ManifestData>() : decodeManifest(parsed)
+      if (text !== undefined && Option.isNone(decoded)) {
+        yield* Effect.logWarning("semantic-search: manifest corrupt or outdated, starting fresh")
+      }
+      const loaded = Option.getOrElse(decoded, () => empty)
       const initial =
         loaded.version === VERSION &&
         loaded.root === config.root &&
@@ -62,7 +71,9 @@ export class Manifest extends Context.Service<Manifest, {
         Effect.gen(function* () {
           const data = yield* Ref.get(ref)
           yield* fs.makeDirectory(config.cacheDir, { recursive: true })
-          yield* fs.writeFileString(file, `${JSON.stringify(data)}\n`)
+          const tmp = `${file}.${process.pid}.tmp`
+          yield* fs.writeFileString(tmp, `${JSON.stringify(data)}\n`)
+          yield* fs.rename(tmp, file)
         }).pipe(Effect.catch(() => Effect.void))
 
       return Manifest.of({

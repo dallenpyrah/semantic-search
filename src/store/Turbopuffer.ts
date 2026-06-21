@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Redacted, Schedule, flow } from "effect"
+import { Context, Effect, Layer, Option, Redacted, Schedule, flow } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse, FetchHttpClient } from "effect/unstable/http"
 import { AppConfig, requireKey } from "../config/AppConfig.ts"
 import { StoreError } from "../domain/errors.ts"
@@ -117,14 +117,26 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
 
       const query = Effect.fn("Turbopuffer.query")(function* (body: MultiQueryBody) {
         const withConsistency: MultiQueryBody = { consistency: { level: consistency }, ...body }
-        return yield* HttpClientRequest.post(`/v2/namespaces/${namespace}/query`).pipe(
+        const response = yield* HttpClientRequest.post(`/v2/namespaces/${namespace}/query`).pipe(
           HttpClientRequest.bodyJsonUnsafe(withConsistency),
           client.execute,
-          Effect.flatMap(HttpClientResponse.schemaBodyJson(MultiQueryResponse)),
+          Effect.map(Option.some),
           Effect.catch((error) =>
             httpStatus(error) === 404
-              ? Effect.succeed(new MultiQueryResponse({ results: [] }))
+              ? Effect.succeed(Option.none<HttpClientResponse.HttpClientResponse>())
               : Effect.fail(toStoreError(error))
+          )
+        )
+        if (Option.isNone(response)) return new MultiQueryResponse({ results: [] })
+        return yield* HttpClientResponse.schemaBodyJson(MultiQueryResponse)(response.value).pipe(
+          Effect.mapError(
+            (error) =>
+              new StoreError({
+                message: `turbopuffer response did not match the expected schema (API change?): ${messageOf(error)}`,
+                status: undefined,
+                namespaceMissing: false,
+                cause: error
+              })
           )
         )
       })

@@ -149,20 +149,25 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
     const rt = ManagedRuntime.make(appLayer({ root: cwd, trusted }))
     runtime = rt
     state = { enabled: true, namespace: probe.namespace, projectName: basename(cwd), disabledReason: "" }
+    const supervised = (name: string, effect: Effect.Effect<unknown, never, AppServices>) =>
+      rt.runFork(effect.pipe(Effect.tapCause((cause) => Effect.logError(`semantic-search: ${name} fiber failed`, cause))))
     fibers = [
-      rt.runFork(
+      supervised(
+        "warm",
         Effect.gen(function* () {
           const store = yield* Turbopuffer
           yield* store.warm()
         })
       ),
-      rt.runFork(
+      supervised(
+        "watch",
         Effect.gen(function* () {
           const watcher = yield* Watcher
           yield* Effect.scoped(watcher.run())
         })
       ),
-      rt.runFork(
+      supervised(
+        "index",
         Effect.gen(function* () {
           const indexer = yield* Indexer
           yield* indexer.indexAll()

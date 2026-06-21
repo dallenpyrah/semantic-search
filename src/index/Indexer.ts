@@ -1,4 +1,4 @@
-import { Context, Effect, FileSystem, Layer, Option, Path, Queue, Stream } from "effect"
+import { Context, Effect, Fiber, FileSystem, Layer, Option, Path, Queue, Stream } from "effect"
 import { readdir, stat } from "node:fs/promises"
 import { AppConfig } from "../config/AppConfig.ts"
 import { Chunker } from "../chunk/Chunker.ts"
@@ -313,10 +313,14 @@ export class Indexer extends Context.Service<Indexer, {
             })
           })
 
+          const checkpoint = yield* Effect.forkChild(
+            Effect.sleep("10 seconds").pipe(Effect.andThen(manifest.save()), Effect.forever)
+          )
           yield* Effect.all([embedPhase, ...Array.from({ length: upsertWorkers }, () => upsertWorker)], {
             concurrency: "unbounded",
             discard: true
           })
+          yield* Fiber.interrupt(checkpoint)
 
           if (probe) clearInterval(probe)
           const known = yield* manifest.knownPaths()

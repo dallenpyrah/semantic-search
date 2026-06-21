@@ -125,11 +125,18 @@ export class CommitIndexer extends Context.Service<CommitIndexer, {
             ...range
           ])
           const commits = parseLog(log.out)
-          if (commits.length > 0) {
-            yield* indexCommits(commits).pipe(
-              Effect.catch((error) => Effect.logWarning("semantic-search: commit indexing failed", error))
-            )
-          }
+          const indexed =
+            commits.length === 0
+              ? true
+              : yield* indexCommits(commits).pipe(
+                  Effect.as(true),
+                  Effect.catch((error) =>
+                    Effect.logWarning("semantic-search: commit indexing failed, will retry next run", error).pipe(
+                      Effect.as(false)
+                    )
+                  )
+                )
+          if (!indexed) return 0
           yield* manifest.setMeta(META_KEY, head)
           yield* manifest.save()
           return commits.length
