@@ -1,13 +1,13 @@
-import { Context, Effect, FileSystem, Layer, Option, Path, Stream } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Path, Queue, Stream } from "effect"
 import { readdir, stat } from "node:fs/promises"
 import { AppConfig } from "../config/AppConfig.ts"
 import { Chunker } from "../chunk/Chunker.ts"
 import { Embeddings } from "../embedding/Embeddings.ts"
-import { Manifest } from "./Manifest.ts"
+import { type FileEntry, Manifest } from "./Manifest.ts"
 import { Turbopuffer } from "../store/Turbopuffer.ts"
 import { rowFromChunk } from "../store/schema.ts"
 import { sha256 } from "../domain/hash.ts"
-import type { IndexStats } from "../domain/types.ts"
+import type { Chunk, IndexStats } from "../domain/types.ts"
 import { compileRules, shouldConsiderFile, shouldEnterDir, shouldIndexFile } from "./ignore.ts"
 
 interface Candidate {
@@ -147,20 +147,137 @@ export class Indexer extends Context.Service<Indexer, {
           }))
         )
 
+      const prepareFile = Effect.fn("Indexer.prepareFile")(function* (candidate: Candidate) {
+        const entry = yield* manifest.fileEntry(candidate.rel)
+        if (
+          Option.isSome(entry) &&
+          entry.value.size === candidate.size &&
+          entry.value.mtimeMs === candidate.mtimeMs
+        ) {
+          return undefined
+        }
+        const bytes = yield* fs.readFile(candidate.abs).pipe(Effect.catch(() => Effect.succeed(undefined)))
+        if (!bytes) return undefined
+        if (looksBinary(bytes)) {
+          yield* removeFromIndex(candidate.rel)
+          return undefined
+        }
+        const content = decoder.decode(bytes)
+        const fileHash = sha256(content)
+        const prev = Option.getOrUndefined(entry)
+        const next: FileEntry = {
+          fileHash,
+          chunkIds: [],
+          size: candidate.size,
+          mtimeMs: candidate.mtimeMs
+        }
+        if (prev && prev.fileHash === fileHash) {
+          yield* manifest.record(candidate.rel, { ...next, chunkIds: prev.chunkIds })
+          return undefined
+        }
+        const chunks = yield* chunker.chunk(candidate.rel, content, fileHash)
+        const prevIds = prev ? prev.chunkIds : []
+        const prevSet = new Set(prevIds)
+        const nextIds = chunks.map((chunk) => chunk.id)
+        const nextSet = new Set(nextIds)
+        const toEmbed = chunks.filter((chunk) => !prevSet.has(chunk.id))
+        const toDelete = prevIds.filter((id) => !nextSet.has(id))
+        const fileEntry: FileEntry = { ...next, chunkIds: nextIds }
+        if (toEmbed.length === 0) {
+          if (toDelete.length > 0) yield* store.deleteIds(toDelete).pipe(Effect.catch(() => Effect.void))
+          yield* manifest.record(candidate.rel, fileEntry)
+          return undefined
+        }
+        return { rel: candidate.rel, entry: fileEntry, toEmbed, toDelete }
+      })
+
+      interface Pending {
+        readonly entry: FileEntry
+        readonly toDelete: ReadonlyArray<string>
+        remaining: number
+      }
+
       const indexAll = (): Effect.Effect<IndexStats> =>
         Effect.gen(function* () {
           const seen = new Set<string>()
-          yield* Stream.fromAsyncIterable(walkGen(root), (cause) => cause).pipe(
-            Stream.mapEffect(
-              (candidate) => {
-                seen.add(candidate.rel)
-                return safeIndex(candidate)
-              },
-              { concurrency, unordered: true }
-            ),
-            Stream.runDrain,
-            Effect.catch(() => Effect.void)
-          )
+          const pending = new Map<string, Pending>()
+          let processed = 0
+          const probe = process.env.SEMSEARCH_PROBE
+            ? setInterval(() => {
+                const m = process.memoryUsage()
+                process.stderr.write(
+                  `[probe] rss=${(m.rss / 1048576) | 0}MB heap=${(m.heapUsed / 1048576) | 0}MB ` +
+                    `external=${(m.external / 1048576) | 0}MB pending=${pending.size} processed=${processed}\n`
+                )
+              }, 2000)
+            : undefined
+
+          const embedBatchAndUpsert = (batch: ReadonlyArray<Chunk>): Effect.Effect<void> =>
+            Effect.gen(function* () {
+              const vectors = yield* embeddings.embed(batch.map((chunk) => chunk.embedText))
+              const rows = batch.map((chunk, i) => rowFromChunk(chunk, vectors[i]!))
+              yield* store.upsert(rows)
+              processed += batch.length
+              const completed: Array<{ rel: string; entry: FileEntry; toDelete: ReadonlyArray<string> }> = []
+              for (const chunk of batch) {
+                const p = pending.get(chunk.path)
+                if (!p) continue
+                p.remaining -= 1
+                if (p.remaining === 0) {
+                  pending.delete(chunk.path)
+                  completed.push({ rel: chunk.path, entry: p.entry, toDelete: p.toDelete })
+                }
+              }
+              for (const done of completed) {
+                if (done.toDelete.length > 0) yield* store.deleteIds(done.toDelete).pipe(Effect.catch(() => Effect.void))
+                yield* manifest.record(done.rel, done.entry)
+              }
+            }).pipe(Effect.catch((error) => Effect.logWarning("semantic-search: embed batch failed", error)))
+
+          const embedBatch = config.settings.indexing.embedBatch
+          const consumers = config.settings.indexing.embedConcurrency
+          const queue = yield* Queue.bounded<Chunk | null>(embedBatch)
+
+          const producer = Effect.gen(function* () {
+            yield* Stream.fromAsyncIterable(walkGen(root), (cause) => cause).pipe(
+              Stream.mapEffect(
+                (candidate) => {
+                  seen.add(candidate.rel)
+                  return prepareFile(candidate).pipe(Effect.catch(() => Effect.succeed(undefined)))
+                },
+                { concurrency, unordered: true }
+              ),
+              Stream.runForEach((prep) => {
+                if (!prep) return Effect.void
+                pending.set(prep.rel, { entry: prep.entry, toDelete: prep.toDelete, remaining: prep.toEmbed.length })
+                return Queue.offerAll(queue, prep.toEmbed)
+              }),
+              Effect.catch(() => Effect.void)
+            )
+            yield* Effect.forEach(Array.from({ length: consumers }), () => Queue.offer(queue, null), {
+              discard: true
+            })
+          })
+
+          const consumer = Effect.gen(function* () {
+            const buffer: Array<Chunk> = []
+            while (true) {
+              const item = yield* Queue.take(queue)
+              if (item === null) {
+                if (buffer.length > 0) yield* embedBatchAndUpsert(buffer.splice(0))
+                return
+              }
+              buffer.push(item)
+              if (buffer.length >= embedBatch) yield* embedBatchAndUpsert(buffer.splice(0))
+            }
+          })
+
+          yield* Effect.all([producer, ...Array.from({ length: consumers }, () => consumer)], {
+            concurrency: "unbounded",
+            discard: true
+          })
+
+          if (probe) clearInterval(probe)
           const known = yield* manifest.knownPaths()
           const removed = known.filter((rel) => !seen.has(rel))
           yield* Effect.forEach(removed, removeFromIndex, { concurrency, discard: true })
