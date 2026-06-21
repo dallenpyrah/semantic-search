@@ -1,6 +1,6 @@
 <div align="center">
 
-# semantic-search
+# pi-semantic-search
 
 **Effect-native semantic + hybrid code search — a Pi coding-agent extension and a standalone CLI.**
 
@@ -30,11 +30,12 @@ across `git pull`, branch switches, and commits.
 
 ## Install (as a Pi extension)
 
-The extension auto-starts on `session_start`: it indexes the project, warms the namespace, and
-watches for file changes. It stops on `session_shutdown`.
+```bash
+pi install git:https://github.com/dallenpyrah/pi-semantic-search.git
+```
 
-1. Point Pi at the extension (auto-discovered if placed under `~/.pi/agent/extensions/`, or add the
-   path to `settings.json` `extensions`). The skill lives in `skills/code-search`.
+The extension auto-starts on `session_start`: it indexes the project, warms the namespace, and
+watches for file changes. It stops on `session_shutdown`. The skill lives in `skills/code-search`.
 2. Provide credentials via environment or `~/.pi/agent/semantic-search.env`:
    - `OPENROUTER_API_KEY` (required — embeddings + reranker, one key)
    - `TURBOPUFFER_API_KEY` + `TURBOPUFFER_REGION` (required — storage)

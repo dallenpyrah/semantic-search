@@ -225,7 +225,7 @@ Caveat: if two distinct functions have byte-identical bodies and the same symbol
 
 ---
 
-## 6. What to take from the Rust reference (`/Users/dallen.pyrah/projects/rikalabs/src/chunker`)
+## 6. What to take from the Rust reference (`<reference-chunker>`)
 
 Read for ideas only (Rust; do not port). What it gets right and we should mirror in TS:
 - **Parse → semantic-span collection → merge-small → fallback** pipeline (`mod.rs` `chunk_file`, `treesitter.rs` `chunk_with_tree`). This is cAST's split-then-merge in practice.
@@ -346,4 +346,4 @@ onFileChange = Effect.fn("reindex")(function* (path) {
 - native tree-sitter sizing: `npm view tree-sitter@0.25.0`, `tree-sitter-typescript@0.23.2` (38.8 MB unpacked, verified)
 - OpenAI text-embedding-3-large limits (8191 tokens, 3072 dims, Matryoshka 256/1024): https://zilliz.com/ai-models/text-embedding-3-large ; OpenAI dev forum threads
 - Corroborating: https://knowledgesdk.com/blog/ast-aware-chunking-code-rag · https://dasroot.net/posts/2026/04/using-ast-parsing-improve-code-retrieval
-- Reference Rust impl (read-only): /Users/dallen.pyrah/projects/rikalabs/src/chunker/{mod.rs,treesitter.rs,language.rs,parser_pool.rs}
+- Reference Rust impl (read-only): <reference-chunker>/{mod.rs,treesitter.rs,language.rs,parser_pool.rs}

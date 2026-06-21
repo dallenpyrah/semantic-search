@@ -1,4 +1,4 @@
-# Architecture — `@rikalabs/semantic-search`
+# Architecture — `pi-semantic-search`
 
 Effect v4 semantic + hybrid code search. One core library; two front-ends (a CLI and a Pi
 coding-agent extension). Grounded design; see `docs/research/*` for the evidence behind every

@@ -1,7 +1,7 @@
 # Effect v4 CLI Module (`effect/unstable/cli`) — Grounding Brief
 
 Status: grounded against vendored Effect v4 ("smol") source at
-`/Users/dallen.pyrah/projects/rika-labs/effect-desktop/repos/effect-smol`.
+`<effect-source>`.
 All signatures and snippets below are quoted/derived from real source, not memory.
 
 ## TL;DR decisions

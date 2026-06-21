@@ -16,7 +16,7 @@ const tasks: ReadonlyArray<Task> = [
 
 const RETRIEVAL = new Set(["semantic_search", "grep", "find", "bash", "ls"])
 
-const PI = "/Users/dallen.pyrah/.bun/bin/pi"
+const PI = process.env.PI_BIN ?? "pi"
 const EXT = resolve(import.meta.dirname, "..", "src", "pi", "extension.ts")
 const SKILL = resolve(import.meta.dirname, "..", "skills", "code-search")
 const repo = process.argv[2]

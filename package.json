@@ -1,5 +1,5 @@
 {
-  "name": "@rikalabs/semantic-search",
+  "name": "pi-semantic-search",
   "version": "0.1.0",
   "description": "Effect-native semantic and hybrid code search: a Pi coding-agent extension and standalone CLI backed by TurboPuffer and OpenAI embeddings.",
   "license": "Apache-2.0",

@@ -61,7 +61,7 @@ const tasks: ReadonlyArray<Task> = [
   }
 ]
 
-const PI = "/Users/dallen.pyrah/.bun/bin/pi"
+const PI = process.env.PI_BIN ?? "pi"
 const REPO = resolve(import.meta.dirname, "..")
 const EXT = join(REPO, "src", "pi", "extension.ts")
 const SKILL = join(REPO, "skills", "code-search")

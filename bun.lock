@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@rikalabs/semantic-search",
+      "name": "pi-semantic-search",
       "dependencies": {
         "@effect/ai-openai": "4.0.0-beta.85",
         "@effect/platform-node": "4.0.0-beta.85",

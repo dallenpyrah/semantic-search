@@ -233,10 +233,10 @@ Target: discovery adoption ≥ ~0.9 (matches the BoR "correct-tool-present" ceil
 
 ## Citations
 
-- Pi extensions API (Custom Tools, `promptSnippet`, `promptGuidelines`, override built-ins, `setActiveTools`): `/Users/dallen.pyrah/.pi/agent/extensions/semantic-search/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`.
+- Pi extensions API (Custom Tools, `promptSnippet`, `promptGuidelines`, override built-ins, `setActiveTools`): `~/.pi/agent/git/github.com/dallenpyrah/pi-semantic-search/node_modules/@earendil-works/pi-coding-agent/docs/extensions.md`.
 - Pi skills (progressive disclosure, frontmatter `description`, validation): same path `/docs/skills.md`; spec https://agentskills.io/specification, https://agentskills.io/integrate-skills.
 - Pi built-in tool copy (grep/read/edit/bash snippets + guidelines): `node_modules/@earendil-works/pi-coding-agent/dist/core/tools/{grep,read,edit}.js` and `dist/.../tools/index`.
-- Current extension tool def: `/Users/dallen.pyrah/.pi/agent/extensions/semantic-search/index.ts:106-276`.
+- Current extension tool def: `~/.pi/agent/git/github.com/dallenpyrah/pi-semantic-search/index.ts:106-276`.
 - Anthropic, "Writing effective tools for AI agents": https://www.anthropic.com/engineering/writing-tools-for-agents
 - Anthropic, "Effective context engineering for AI agents": https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
 - OpenAI function-calling guide (names, when/when-not, <20 tools, namespaces): https://developers.openai.com/api/docs/guides/function-calling

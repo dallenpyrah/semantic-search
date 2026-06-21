@@ -6,7 +6,7 @@ materially from v3; every v3→v4 delta is flagged inline.
 
 ## Sources
 
-- Vendored source: `/Users/dallen.pyrah/projects/rika-labs/effect-desktop/repos/effect-smol`
+- Vendored source: `<effect-source>`
   - `LLMS.md`, `ai-docs/src/01_effect/**`, `ai-docs/src/02_stream/**`, `ai-docs/src/06_schedule/**`
   - `packages/effect/src/{Context,Config,Layer,Effect,Schema,Stream,Schedule,Ref,SynchronizedRef,Queue,FileSystem,Path,Data}.ts`
   - `packages/platform-node/src/{NodeServices,NodeFileSystem,NodePath,NodeStream,NodeRuntime}.ts`

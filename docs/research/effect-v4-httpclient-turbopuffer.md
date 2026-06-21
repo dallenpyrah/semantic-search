@@ -1,7 +1,7 @@
 # Effect v4 (`effect-smol`) HttpClient → TurboPuffer REST API
 
 Grounding brief for the TurbopufferClient service. All Effect APIs verified against vendored
-source at `/Users/dallen.pyrah/projects/rika-labs/effect-desktop/repos/effect-smol`. TurboPuffer
+source at `<effect-source>`. TurboPuffer
 facts verified against official docs (turbopuffer.com) and the official TS/Ruby clients.
 
 ---

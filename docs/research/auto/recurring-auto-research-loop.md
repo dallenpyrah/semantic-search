@@ -2,7 +2,7 @@
 
 Status: grounding research, actionable. Date: 2026-06-20.
 Target system: Effect v4 semantic + hybrid code-search (Pi extension + CLI) at
-`/Users/dallen.pyrah/projects/rika-labs/semantic-search`.
+`.`.
 
 North star: **be #1 on a real, published code-search benchmark** while improving speed, memory,
 and indexing. The benchmark to chase is **CoIR** (NDCG@10). This brief specifies the recurring
@@ -335,7 +335,7 @@ The cron wrapper must hand the agent a prompt that needs zero human context:
 
 ```
 You are the recurring code-search improver for the repo at
-/Users/dallen.pyrah/projects/rika-labs/semantic-search.
+..
 Read docs/research/auto/recurring-auto-research-loop.md §3 (the runbook) and follow it EXACTLY,
 one experiment, then stop. Keys are in ~/.pi/agent/semantic-search.env (source them).
 Hard rules: never push to or break main unless STEP 6 keep is proven green; never commit secrets;

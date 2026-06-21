@@ -89,7 +89,7 @@ The project a session belongs to is encoded **two ways**, both present in real f
 2. The **header line** (first JSONL line) carries the literal cwd. Verified header:
    ```json
    {"type":"session","version":3,"id":"019eccc5-8ce8-724c-8545-78441d6251a8",
-    "timestamp":"2026-06-15T19:32:39.272Z","cwd":"/Users/dallen.pyrah/projects/steward"}
+    "timestamp":"2026-06-15T19:32:39.272Z","cwd":"<example-project>"}
    ```
    **Use the header `cwd`, not the dir name** — the dir-name encoding is lossy (a real repo path with a
    `-` in it is ambiguous), and forked sessions carry a `parentSession` path that can point elsewhere.
