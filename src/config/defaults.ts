@@ -71,7 +71,7 @@ export interface SettingsOverride {
   readonly search?: Partial<SearchDefaults>
 }
 
-export const SCHEMA_VERSION = "v1"
+export const SCHEMA_VERSION = "v2"
 
 export const defaultSettings: Settings = {
   embedding: {
