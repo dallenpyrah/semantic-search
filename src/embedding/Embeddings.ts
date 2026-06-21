@@ -1,5 +1,5 @@
-import { Array as Arr, Context, Effect, Layer, Redacted, Schedule, Schema, flow } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+import { Array as Arr, Context, Effect, Layer, Option, Redacted, Schedule, Schema, flow } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { AppConfig, requireKey } from "../config/AppConfig.ts"
 import { EmbedError } from "../domain/errors.ts"
 import { VectorCache } from "./VectorCache.ts"
@@ -51,7 +51,6 @@ export class Embeddings extends Context.Service<Embeddings, {
             HttpClientRequest.acceptJson
           )
         ),
-        HttpClient.filterStatusOk,
         HttpClient.transformResponse(Effect.timeout("60 seconds"))
       )
 
@@ -59,7 +58,27 @@ export class Embeddings extends Context.Service<Embeddings, {
         HttpClientRequest.post("/embeddings").pipe(
           HttpClientRequest.bodyJsonUnsafe({ model: embedding.model, input: batch, dimensions }),
           client.execute,
-          Effect.flatMap(HttpClientResponse.schemaBodyJson(EmbeddingResponse)),
+          Effect.flatMap((response) =>
+            response.text.pipe(
+              Effect.flatMap((body: string) =>
+                response.status < 200 || response.status >= 300
+                  ? Effect.fail(new Error(`POST ${baseUrl}/embeddings -> HTTP ${response.status}: ${body.slice(0, 400)}`))
+                  : Effect.try({
+                      try: () => JSON.parse(body) as unknown,
+                      catch: () => new Error(`non-JSON response (HTTP ${response.status}): ${body.slice(0, 400)}`)
+                    }).pipe(
+                      Effect.flatMap((json) => {
+                        const decoded = Schema.decodeUnknownOption(EmbeddingResponse)(json)
+                        return Option.isSome(decoded)
+                          ? Effect.succeed(decoded.value)
+                          : Effect.fail(
+                              new Error(`unexpected embeddings response (HTTP ${response.status}): ${body.slice(0, 400)}`)
+                            )
+                      })
+                    )
+              )
+            )
+          ),
           Effect.map((response) =>
             [...response.data]
               .sort((left, right) => left.index - right.index)
