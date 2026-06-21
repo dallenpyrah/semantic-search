@@ -86,13 +86,14 @@ export class CommitIndexer extends Context.Service<CommitIndexer, {
       const indexing = config.settings.indexing
 
       const indexCommits = (commits: ReadonlyArray<Commit>) =>
-        Effect.gen(function* () {
-          for (const batch of Arr.chunksOf(commits, 96)) {
-            const vectors = yield* embeddings.embed(batch.map(commitDoc))
-            const rows = batch.map((commit, i) => rowOf(commit, vectors[i]!))
-            yield* store.upsert(rows)
-          }
-        })
+        Effect.forEach(
+          Arr.chunksOf(commits, indexing.embedBatch),
+          (batch) =>
+            embeddings
+              .embed(batch.map(commitDoc))
+              .pipe(Effect.flatMap((vectors) => store.upsert(batch.map((commit, i) => rowOf(commit, vectors[i]!))))),
+          { concurrency: indexing.embedConcurrency, discard: true }
+        )
 
       const run = (): Effect.Effect<number> =>
         Effect.gen(function* () {

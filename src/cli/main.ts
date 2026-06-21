@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { Console, Effect } from "effect"
+import { Console, Duration, Effect } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { resolve } from "node:path"
@@ -28,10 +28,12 @@ const index = Command.make(
       Effect.gen(function* () {
         const indexer = yield* Indexer
         yield* Console.log(`Indexing ${resolve(cfg.path)} ...`)
-        const stats = yield* indexer.indexAll()
-        const commits = yield* (yield* CommitIndexer).run()
+        const [codeDur, stats] = yield* Effect.timed(indexer.indexAll())
+        const [histDur, commits] = yield* Effect.timed((yield* CommitIndexer).run())
+        const secs = (d: Duration.Duration) => (Duration.toMillis(d) / 1000).toFixed(1)
         yield* Console.log(
-          `Indexed ${stats.files} files / ${stats.chunks} chunks + ${commits} commits into ${stats.namespace}`
+          `Indexed ${stats.files} files / ${stats.chunks} chunks (${secs(codeDur)}s) + ` +
+            `${commits} commits (${secs(histDur)}s) into ${stats.namespace}`
         )
       })
     )
