@@ -5,7 +5,7 @@ import { Chunker } from "../chunk/Chunker.ts"
 import { Embeddings } from "../embedding/Embeddings.ts"
 import { type FileEntry, Manifest } from "./Manifest.ts"
 import { Turbopuffer } from "../store/Turbopuffer.ts"
-import { rowFromChunk } from "../store/schema.ts"
+import { type UpsertRow, rowFromChunk } from "../store/schema.ts"
 import { sha256 } from "../domain/hash.ts"
 import type { Chunk, IndexStats } from "../domain/types.ts"
 import { compileRules, shouldConsiderFile, shouldEnterDir, shouldIndexFile } from "./ignore.ts"
@@ -197,6 +197,11 @@ export class Indexer extends Context.Service<Indexer, {
         remaining: number
       }
 
+      interface UpsertJob {
+        readonly rows: ReadonlyArray<UpsertRow>
+        readonly paths: ReadonlyArray<string>
+      }
+
       const indexAll = (): Effect.Effect<IndexStats> =>
         Effect.gen(function* () {
           const seen = new Set<string>()
@@ -212,31 +217,40 @@ export class Indexer extends Context.Service<Indexer, {
               }, 2000)
             : undefined
 
-          const embedBatchAndUpsert = (batch: ReadonlyArray<Chunk>): Effect.Effect<void> =>
+          const embedBatch = config.settings.indexing.embedBatch
+          const consumers = config.settings.indexing.embedConcurrency
+          const upsertWorkers = Math.max(1, config.settings.indexing.upsertConcurrency)
+          const chunkQueue = yield* Queue.bounded<Chunk | null>(embedBatch)
+          const upsertQueue = yield* Queue.bounded<UpsertJob | null>(upsertWorkers + 2)
+
+          const finalize = (paths: ReadonlyArray<string>): Effect.Effect<void> =>
             Effect.gen(function* () {
-              const vectors = yield* embeddings.embed(batch.map((chunk) => chunk.embedText))
-              const rows = batch.map((chunk, i) => rowFromChunk(chunk, vectors[i]!))
-              yield* store.upsert(rows)
-              processed += batch.length
               const completed: Array<{ rel: string; entry: FileEntry; toDelete: ReadonlyArray<string> }> = []
-              for (const chunk of batch) {
-                const p = pending.get(chunk.path)
+              for (const path of paths) {
+                const p = pending.get(path)
                 if (!p) continue
                 p.remaining -= 1
                 if (p.remaining === 0) {
-                  pending.delete(chunk.path)
-                  completed.push({ rel: chunk.path, entry: p.entry, toDelete: p.toDelete })
+                  pending.delete(path)
+                  completed.push({ rel: path, entry: p.entry, toDelete: p.toDelete })
                 }
               }
               for (const done of completed) {
                 if (done.toDelete.length > 0) yield* store.deleteIds(done.toDelete).pipe(Effect.catch(() => Effect.void))
                 yield* manifest.record(done.rel, done.entry)
               }
-            }).pipe(Effect.catch((error) => Effect.logWarning("semantic-search: embed batch failed", error)))
+            })
 
-          const embedBatch = config.settings.indexing.embedBatch
-          const consumers = config.settings.indexing.embedConcurrency
-          const queue = yield* Queue.bounded<Chunk | null>(embedBatch)
+          const embedStage = (batch: ReadonlyArray<Chunk>): Effect.Effect<void> =>
+            embeddings.embed(batch.map((chunk) => chunk.embedText)).pipe(
+              Effect.flatMap((vectors) =>
+                Queue.offer(upsertQueue, {
+                  rows: batch.map((chunk, i) => rowFromChunk(chunk, vectors[i]!)),
+                  paths: batch.map((chunk) => chunk.path)
+                })
+              ),
+              Effect.catch((error) => Effect.logWarning("semantic-search: embed batch failed", error))
+            )
 
           const producer = Effect.gen(function* () {
             yield* Stream.fromAsyncIterable(walkGen(root), (cause) => cause).pipe(
@@ -250,29 +264,49 @@ export class Indexer extends Context.Service<Indexer, {
               Stream.runForEach((prep) => {
                 if (!prep) return Effect.void
                 pending.set(prep.rel, { entry: prep.entry, toDelete: prep.toDelete, remaining: prep.toEmbed.length })
-                return Queue.offerAll(queue, prep.toEmbed)
+                return Queue.offerAll(chunkQueue, prep.toEmbed)
               }),
               Effect.catch(() => Effect.void)
             )
-            yield* Effect.forEach(Array.from({ length: consumers }), () => Queue.offer(queue, null), {
+            yield* Effect.forEach(Array.from({ length: consumers }), () => Queue.offer(chunkQueue, null), {
               discard: true
             })
           })
 
-          const consumer = Effect.gen(function* () {
+          const embedConsumer = Effect.gen(function* () {
             const buffer: Array<Chunk> = []
             while (true) {
-              const item = yield* Queue.take(queue)
+              const item = yield* Queue.take(chunkQueue)
               if (item === null) {
-                if (buffer.length > 0) yield* embedBatchAndUpsert(buffer.splice(0))
+                if (buffer.length > 0) yield* embedStage(buffer.splice(0))
                 return
               }
               buffer.push(item)
-              if (buffer.length >= embedBatch) yield* embedBatchAndUpsert(buffer.splice(0))
+              if (buffer.length >= embedBatch) yield* embedStage(buffer.splice(0))
             }
           })
 
-          yield* Effect.all([producer, ...Array.from({ length: consumers }, () => consumer)], {
+          const upsertWorker = Effect.gen(function* () {
+            while (true) {
+              const job = yield* Queue.take(upsertQueue)
+              if (job === null) return
+              yield* store.upsert(job.rows).pipe(Effect.catch((error) => Effect.logWarning("semantic-search: upsert failed", error)))
+              processed += job.rows.length
+              yield* finalize(job.paths)
+            }
+          })
+
+          const embedPhase = Effect.gen(function* () {
+            yield* Effect.all([producer, ...Array.from({ length: consumers }, () => embedConsumer)], {
+              concurrency: "unbounded",
+              discard: true
+            })
+            yield* Effect.forEach(Array.from({ length: upsertWorkers }), () => Queue.offer(upsertQueue, null), {
+              discard: true
+            })
+          })
+
+          yield* Effect.all([embedPhase, ...Array.from({ length: upsertWorkers }, () => upsertWorker)], {
             concurrency: "unbounded",
             discard: true
           })

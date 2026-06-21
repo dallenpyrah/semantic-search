@@ -65,7 +65,7 @@ describe.skipIf(!live)("live store + embeddings round trip", () => {
     })
 
     const result = await Effect.runPromise(Effect.provide(program, layer))
-    expect(result.dimensions).toBe(3072)
+    expect(result.dimensions).toBe(1536)
     const rows = result.response.results[0]?.rows ?? []
     const paths = rows.map((r) => r.path)
     expect(rows.length).toBeGreaterThan(0)

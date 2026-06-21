@@ -8,6 +8,7 @@ export interface IndexingConfig {
   readonly embedTokenCap: number
   readonly embedBatch: number
   readonly embedConcurrency: number
+  readonly upsertConcurrency: number
   readonly upsertBatch: number
   readonly debounceMs: number
   readonly maxQueueSize: number
@@ -78,7 +79,7 @@ export const defaultSettings: Settings = {
   embedding: {
     provider: "openrouter",
     model: "text-embedding-3-large",
-    dimensions: 3072
+    dimensions: 1536
   },
   store: {
     region: "gcp-us-central1",
@@ -98,8 +99,9 @@ export const defaultSettings: Settings = {
     chunkMaxChars: 1600,
     chunkMinChars: 80,
     embedTokenCap: 8000,
-    embedBatch: 80,
+    embedBatch: 128,
     embedConcurrency: 10,
+    upsertConcurrency: 4,
     upsertBatch: 256,
     debounceMs: 400,
     maxQueueSize: 4096,
