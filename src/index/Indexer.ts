@@ -290,9 +290,16 @@ export class Indexer extends Context.Service<Indexer, {
             while (true) {
               const job = yield* Queue.take(upsertQueue)
               if (job === null) return
-              yield* store.upsert(job.rows).pipe(Effect.catch((error) => Effect.logWarning("semantic-search: upsert failed", error)))
+              const ok = yield* store.upsert(job.rows).pipe(
+                Effect.as(true),
+                Effect.catch((error) =>
+                  Effect.logWarning("semantic-search: upsert failed, leaving files for retry next run", error).pipe(
+                    Effect.as(false)
+                  )
+                )
+              )
               processed += job.rows.length
-              yield* finalize(job.paths)
+              if (ok) yield* finalize(job.paths)
             }
           })
 
