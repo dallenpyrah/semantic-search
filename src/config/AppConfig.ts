@@ -93,7 +93,7 @@ const build = (input: AppConfigInput) =>
 
     const keyValue = envValue(embedKeyName)
     const keySource = fileEnv[embedKeyName] ? "file" : process.env[embedKeyName] ? "ambient" : "none"
-    yield* Effect.logInfo(
+    yield* Effect.logWarning(
       `semantic-search diag: provider=${settings.embedding.provider} dims=${settings.embedding.dimensions} ` +
         `embedKey=${embedKeyName}#${keyValue ? keyValue.slice(-6) : "MISSING"}(${keySource}) ` +
         `baseUrl=${settings.embedding.baseUrl ?? "default"} ` +
