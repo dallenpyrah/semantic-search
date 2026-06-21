@@ -71,6 +71,7 @@ export class Embeddings extends Context.Service<Embeddings, {
 
       const embed = Effect.fn("Embeddings.embed")(function* (texts: ReadonlyArray<string>) {
         if (texts.length === 0) return [] as ReadonlyArray<ReadonlyArray<number>>
+        if (!indexing.vectorCacheEnabled) return yield* embedViaApi(texts)
         const keys = texts.map((text) => cache.keyOf(text))
         const cached = yield* cache.get(keys)
         const missIdx: Array<number> = []

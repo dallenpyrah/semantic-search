@@ -10,6 +10,7 @@ export interface IndexingConfig {
   readonly embedConcurrency: number
   readonly upsertConcurrency: number
   readonly upsertBatch: number
+  readonly vectorCacheEnabled: boolean
   readonly debounceMs: number
   readonly maxQueueSize: number
   readonly scanConcurrency: number
@@ -103,6 +104,7 @@ export const defaultSettings: Settings = {
     embedConcurrency: 10,
     upsertConcurrency: 4,
     upsertBatch: 256,
+    vectorCacheEnabled: true,
     debounceMs: 400,
     maxQueueSize: 4096,
     scanConcurrency: 16,

@@ -48,24 +48,32 @@ true-grep task goes to `grep`, not `semantic_search`. The flow is `read(SKILL.md
 
 Full cold index of a real monorepo — **2,160 source files → 11,545 chunks + 1,460 git commits**
 (the repo has 15k tracked files, but 14.8k are vendored under `repos/` and correctly excluded).
-Embeddings via OpenRouter `text-embedding-3-large` @ 3072d.
+Embeddings via OpenRouter `text-embedding-3-large`.
 
-| Config (`embedConcurrency`×`embedBatch`) | Total | Code phase | Commits phase | Peak footprint | Max RSS |
+| Stage | Total | Code phase | Commits phase | Peak footprint | Max RSS |
 |---|---|---|---|---|---|
-| 4 × 128 | 268s | ~204s | (serial) | 363MB | 856MB |
-| 8 × 96 (+ parallel commits) | 184s | 159.6s | 24.0s | 548MB | 1058MB |
-| **10 × 80 (default)** | **170s** | 147.1s | 22.5s | 537MB | 1103MB |
+| original (per-file embed, serial commits, 3072d) | 268s | ~204s | serial | 363MB | 856MB |
+| tuned concurrency (10×80, 3072d) | 170s | 147.1s | 22.5s | 537MB | 1103MB |
+| **+ 1536d + decouple embed/upsert + cache (default)** | **96.7s** | **82.8s** | **13.6s** | **474MB** | **924MB** |
+| same, re-index with warm vector cache | 89.5s | 78.8s | 10.5s | — | — |
 
-The default favors speed within a ~1GB budget. **Peak memory footprint (real pressure) is ~537MB**; the
-~1.1GB is JSC's reserved-but-reclaimable heap. The live working set stayed 44–167MB across the whole run
-(GC'd every cycle) — **no leak**. 0 rate-limit errors.
+**Net: 268s → 96.7s (2.8× faster) and back under a 1GB RSS budget.** Live working set stayed
+65–~160MB (GC'd) — **no leak**. 0 rate-limit errors.
 
 Pipeline: a native streaming `readdir` walk feeds `prepareFile` (read/hash/chunk/diff) at
 `scanConcurrency`, which offers each file's new chunks into a **`Queue.bounded`** (suspend strategy →
-the producer blocks when full, so memory is hard-bounded); `embedConcurrency` consumers batch chunks
-**across files** into bulk embedding calls, upsert, then finalize each file's manifest entry once all its
-chunks land. Commit history embeds in parallel batches too. Incremental re-index is ~free (content-hash
-gate). Tunable via `embedBatch` / `embedConcurrency` (lower both to trade speed for a smaller peak).
+the producer blocks when full, so memory is hard-bounded). `embedConcurrency` **embed** fibers batch
+chunks across files into bulk embedding calls and hand rows to a second bounded queue; `upsertConcurrency`
+**upsert** fibers drain it, write to TurboPuffer, and finalize each file's manifest entry once all its
+chunks land — so embedding never blocks on the write RTT. A persistent **vector cache**
+(`<agentDir>/semantic-search/vec/<model>_<dims>/`, keyed by `sha256(embedText)`) turns a re-embed of
+identical content into a ~3ms disk read (500× vs a ~1.5s API call); set `indexing.vectorCacheEnabled:false`
+to disable. Embeddings are 1536-dim (native Matryoshka truncation of `text-embedding-3-large`) — an
+eval A/B showed **identical retrieval at 1536 vs 3072** while halving vector memory + storage. Incremental
+re-index is ~free (content-hash gate). Tunable via `embedBatch`/`embedConcurrency`/`upsertConcurrency`.
+
+At 1536d the bottleneck has shifted off embedding onto walk/chunk/upsert (the warm-cache re-index is only
+~7s faster than cold), so further speedups now come from the producer/write side, not more embed concurrency.
 
 ## Multi-source + CoIR
 
