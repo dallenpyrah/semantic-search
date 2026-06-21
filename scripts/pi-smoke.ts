@@ -58,10 +58,10 @@ const main = async () => {
   try {
     semanticSearchExtension(pi as never)
     console.log("registered tools:", [...tools.keys()].join(", "))
-    const search = tools.get("code_search")
-    const grep = tools.get("code_grep")
-    if (!search || !grep) throw new Error("expected code_search and code_grep tools")
-    console.log("code_search snippet:", search.promptSnippet)
+    const search = tools.get("semantic_search")
+    const grep = tools.get("semantic_search")
+    if (!search) throw new Error("expected semantic_search tool")
+    console.log("semantic_search snippet:", search.promptSnippet)
 
     const start = handlers.get("session_start")
     if (!start) throw new Error("no session_start handler")
@@ -79,10 +79,10 @@ const main = async () => {
     console.log("details:", JSON.stringify(result.details).slice(0, 400))
     console.log("elapsed total ms:", Date.now() - t0)
 
-    const grepResult = (await grep.execute("call-2", { query: "LruCache" })) as {
+    const grepResult = (await search.execute("call-2", { query: "LruCache", mode: "hybrid" })) as {
       content: Array<{ text: string }>
     }
-    console.log("\n=== code_grep result ===")
+    console.log("\n=== semantic_search (hybrid) result ===")
     console.log(grepResult.content[0]?.text?.slice(0, 400))
 
     const shutdown = handlers.get("session_shutdown")

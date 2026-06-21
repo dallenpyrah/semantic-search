@@ -11,14 +11,14 @@ import { Search } from "../search/Search.ts"
 import { Turbopuffer } from "../store/Turbopuffer.ts"
 import { Watcher } from "../watch/Watcher.ts"
 import { type AppError, type AppServices, appLayer, configLayer } from "../runtime/layers.ts"
-import type { SearchMode, SearchOptions, SourceType } from "../domain/types.ts"
-import { codeGrepTool, codeHistoryTool, codeSearchTool } from "./tools.ts"
+import { ALL_SOURCES, type SearchMode, type SearchOptions, type SourceType } from "../domain/types.ts"
+import { semanticSearchTool } from "./tools.ts"
 
 const searchParameters = Type.Object({
   query: Type.Optional(
     Type.String({
       description:
-        "Natural-language description of the code, behavior, concept, symbol, or error you are looking for"
+        "Natural-language description or symbol/string to find — the code, behavior, concept, or error you want"
     })
   ),
   queries: Type.Optional(
@@ -29,8 +29,24 @@ const searchParameters = Type.Object({
         "2-5 DISTINCT facets to retrieve and merge in one parallel call (use instead of query for multi-faceted tasks)"
     })
   ),
+  mode: Type.Optional(
+    Type.Union([Type.Literal("hybrid"), Type.Literal("semantic")], {
+      description: "'hybrid' (default; semantic + exact-token) or 'semantic' (meaning only, fastest)"
+    })
+  ),
+  source: Type.Optional(
+    Type.Array(Type.Union(ALL_SOURCES.map((s) => Type.Literal(s))), {
+      description: "Force which sources to search: code, docs, history (git commits), conversation. Omit for smart default."
+    })
+  ),
+  file: Type.Optional(
+    Type.String({ description: "Repository-relative file path: returns the actual commit messages and diffs that changed it" })
+  ),
+  lines: Type.Optional(
+    Type.String({ description: "Optional line range like 40-80 to scope the file's change history" })
+  ),
   limit: Type.Optional(
-    Type.Number({ minimum: 1, maximum: 25, description: "Maximum ranked snippets total across all facets (default 8)" })
+    Type.Number({ minimum: 1, maximum: 30, description: "Maximum ranked results (default 8)" })
   ),
   pathPrefix: Type.Optional(
     Type.String({ description: "Restrict to a repository-relative directory prefix, e.g. packages/api" })
@@ -40,22 +56,11 @@ const searchParameters = Type.Object({
   )
 })
 
-const historyParameters = Type.Object({
-  query: Type.Optional(
-    Type.String({ description: "What to look for in commit history (e.g. 'why did we change cache eviction')" })
-  ),
-  file: Type.Optional(
-    Type.String({ description: "Repository-relative file path to show the actual commit history and diffs that changed it" })
-  ),
-  lines: Type.Optional(
-    Type.String({ description: "Optional line range like 40-80 to show only that region's change history (with file)" })
-  ),
-  limit: Type.Optional(Type.Number({ minimum: 1, maximum: 30, description: "Maximum commits to return (default 10)" }))
-})
-
 interface SearchParams {
   readonly query?: string
   readonly queries?: ReadonlyArray<string>
+  readonly mode?: SearchMode
+  readonly source?: ReadonlyArray<SourceType>
   readonly file?: string
   readonly lines?: string
   readonly limit?: number
@@ -171,18 +176,17 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
   }
 
   const runSearch = async (
-    mode: SearchMode,
     params: SearchParams,
-    signal: AbortSignal | undefined,
-    source?: ReadonlyArray<SourceType>
+    signal: AbortSignal | undefined
   ): Promise<ToolResult> => {
     const rt = runtime
     if (!rt || !state.enabled) return textResult(state.disabledReason, { enabled: false })
     const facets = facetsOf(params)
     if (facets.length === 0) return textResult("query or queries is required", { enabled: true, error: "missing query" })
+    const mode: SearchMode = params.mode === "semantic" ? "semantic" : "hybrid"
     const program = Effect.gen(function* () {
       const search = yield* Search
-      const options = toOptions(params, source)
+      const options = toOptions(params, params.source)
       const value = yield* search.search(mode, facets, options)
       return { value, formatted: search.formatted(value) }
     })
@@ -225,20 +229,6 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
     await stop()
   })
 
-  pi.registerTool({
-    ...codeSearchTool,
-    parameters: searchParameters,
-    execute: (_toolCallId: string, params: SearchParams, signal?: AbortSignal) =>
-      runSearch("semantic", params, signal)
-  })
-
-  pi.registerTool({
-    ...codeGrepTool,
-    parameters: searchParameters,
-    execute: (_toolCallId: string, params: SearchParams, signal?: AbortSignal) =>
-      runSearch("hybrid", params, signal)
-  })
-
   const runFileHistory = async (params: SearchParams, signal: AbortSignal | undefined): Promise<ToolResult> => {
     const rt = runtime
     if (!rt || !state.enabled) return textResult(state.disabledReason, { enabled: false })
@@ -259,9 +249,9 @@ export default function semanticSearchExtension(pi: ExtensionAPI) {
   }
 
   pi.registerTool({
-    ...codeHistoryTool,
-    parameters: historyParameters,
+    ...semanticSearchTool,
+    parameters: searchParameters,
     execute: (_toolCallId: string, params: SearchParams, signal?: AbortSignal) =>
-      params.file?.trim() ? runFileHistory(params, signal) : runSearch("hybrid", params, signal, ["history"])
+      params.file?.trim() ? runFileHistory(params, signal) : runSearch(params, signal)
   })
 }

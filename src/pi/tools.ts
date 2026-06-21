@@ -1,60 +1,33 @@
-export const codeSearchTool = {
-  name: "code_search",
-  label: "Code Search",
+export const semanticSearchTool = {
+  name: "semantic_search",
+  label: "Semantic Search",
   description:
-    "Find code, docs, and symbols by MEANING across the whole project in one call. " +
-    "Use when you don't yet know which file holds the logic, when you're tracing a concept, " +
-    "feature, behavior, or data flow across files, or when the request describes WHAT something does " +
-    "rather than its exact name (e.g. 'where do we validate auth tokens', 'how is retry handled'). " +
-    "Returns ranked snippets with repository-relative file path and line range. For a multi-faceted " +
-    "task, pass queries[] with 2-5 DISTINCT facets to retrieve and merge them in one parallel call " +
-    "instead of several searches; use a single query for a single focus. Live code is the source of " +
-    "truth; when the request is clearly about WHY or WHEN something changed, results may also include " +
-    "lower-weighted git-history or past-conversation context, clearly tagged — treat those as context, " +
-    "not as the current state of the code. Prefer this over running several grep and read calls. " +
-    "Do NOT use it for an exact literal string you already know verbatim — use code_grep for that.",
-  promptSnippet: "Find code/docs by meaning in one call; pass queries[] to search several facets in parallel",
+    "Search the project by MEANING in one call — the primary way to find code, trace a concept, " +
+    "behavior, feature, or data flow across files, and answer 'where is X' or 'how does X work' without " +
+    "running many grep and read calls. Returns ranked snippets with repository-relative file path and " +
+    "line range, so you can read or edit the right location directly. Prefer it over grep/read for " +
+    "discovery: one call replaces many round-trips and spends far less context.\n\n" +
+    "Config options (all optional):\n" +
+    "- query: a single natural-language or symbol query.\n" +
+    "- queries: 2-5 DISTINCT facets to retrieve and MERGE in one parallel call (use for multi-faceted " +
+    "tasks instead of several searches; never pass paraphrases).\n" +
+    "- mode: 'hybrid' (default — semantic + exact-token matching, best for an exact symbol/string) or " +
+    "'semantic' (meaning only, fastest).\n" +
+    "- pathPrefix / language: scope to a directory prefix or language.\n" +
+    "- limit: max snippets to return (default 8).\n" +
+    "- source: force ['history'] (git commits) or ['conversation'] (past sessions). By default results " +
+    "are live code; for clearly historical 'why/when did this change' questions it also surfaces " +
+    "lower-weighted git-history and conversation context, tagged [history]/[conversation] — treat those " +
+    "as context, NOT the current state of the code, which is always authoritative.\n" +
+    "- file (+ optional lines like 40-80): return the ACTUAL commit messages and diffs that changed that " +
+    "file or region — for 'why did this file change from X to Y, show the old diff'.\n\n" +
+    "Use the built-in grep only for a raw exhaustive regex sweep, or read when you already know the exact file.",
+  promptSnippet: "Search code by meaning in one call (options: queries[], mode, source, file) — use before grep",
   promptGuidelines: [
-    "Use code_search first for discovery — locating unknown files, tracing a concept, behavior, or feature across the codebase, or any 'where is X' or 'how does X work' question — instead of multiple grep and read calls.",
-    "For a multi-faceted task (e.g. 'auth + rate limiting + retry'), pass code_search a queries[] array of the 2-5 distinct facets to retrieve and merge in one call; use a single query for a single focus and never pass paraphrases.",
-    "Treat any git-history or conversation results from code_search as supplementary context for why/when questions; the live code it returns is authoritative.",
-    "Pass pathPrefix or language to code_search when the request names a package, app, directory, or programming language."
-  ]
-}
-
-export const codeGrepTool = {
-  name: "code_grep",
-  label: "Code Grep",
-  description:
-    "Find an exact symbol, string, or error message AND its semantically related code, ranked across " +
-    "the whole project in one call. Use when you have a literal token (function name, variable, error " +
-    "text, config key) but still want every relevant hit ranked and grouped with related code. Returns " +
-    "ranked snippets with repository-relative file path and line range. Pass queries[] with 2-5 distinct " +
-    "symbols/strings to locate several at once in one merged ranked call. Prefer code_grep over the " +
-    "built-in grep when you want ranked, cross-file results or aren't certain the literal spelling is " +
-    "exact. Use the built-in grep only for a raw exhaustive regex sweep or when the index may be stale.",
-  promptSnippet: "Ranked exact-token + related-code search; pass queries[] for several symbols at once",
-  promptGuidelines: [
-    "Use code_grep instead of the built-in grep when you have an exact symbol, string, or error but want ranked, cross-file results that also surface related code.",
-    "When you have several distinct symbols or strings to locate at once, pass code_grep a queries[] array for one merged ranked result instead of several grep calls.",
+    "Use semantic_search first for discovery — locating unknown files, tracing a concept, behavior, or feature across the codebase, or any 'where is X' or 'how does X work' question — instead of multiple grep and read calls.",
+    "Pass semantic_search a queries[] array of 2-5 distinct facets to retrieve and merge several concepts in one parallel call; use a single query for a single focus.",
+    "For 'why did this change' or a file's history, pass semantic_search a file (and optional lines) to get the real past diffs and messages; treat any history or conversation results as context, while the live code it returns is the source of truth.",
+    "Pass pathPrefix or language to semantic_search when the request names a package, directory, or programming language.",
     "Fall back to the built-in grep only for raw exhaustive regex sweeps or when you suspect the index is stale."
-  ]
-}
-
-export const codeHistoryTool = {
-  name: "code_history",
-  label: "Code History",
-  description:
-    "Search the project's GIT HISTORY to answer WHY something changed, WHEN a feature or behavior was " +
-    "introduced, what a recent change did, or how a file evolved. Two modes: (1) pass a query to rank " +
-    "commits by message; (2) pass a file (repo-relative path, optionally with a lines range like 40-80) " +
-    "to get the ACTUAL commits, messages, and diffs that changed that file or region — exactly for 'why " +
-    "did this file change from X to Y, show the old diff'. Results are stamped with short sha, date, and " +
-    "author. This is historical context, NOT the current state of the code: use it to understand intent " +
-    "and evolution, then confirm present behavior with code_search or read on the live file. Use " +
-    "code_search (not this) to find where something IS implemented now.",
-  promptSnippet: "Git history: why/when code changed, or a file's commits + diffs — context, not live code",
-  promptGuidelines: [
-    "Use code_history for 'why did this change', 'when was X introduced', or 'what changed recently'; pass a file (and optional lines) to see the actual past diffs and messages that changed it. The live code (via code_search/read) remains the source of truth."
   ]
 }

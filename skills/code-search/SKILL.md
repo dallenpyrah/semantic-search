@@ -1,42 +1,38 @@
 ---
 name: code-search
 description: >-
-  Find code, docs, and symbols by meaning across the whole project. Use when you need to locate
-  where something is implemented, trace a feature, behavior, or concept across files, understand an
-  unfamiliar codebase, find all callers or usages, or search by description ("where do we handle
-  retries", "find the auth middleware", "how does indexing work") rather than an exact name. Use the
-  code_search and code_grep tools instead of multiple grep and read calls — they return ranked
-  file-and-line snippets in one call and use far less context.
+  Find code, docs, and symbols by meaning across the whole project. Use when you need to locate where
+  something is implemented, trace a feature, behavior, or concept across files, understand an unfamiliar
+  codebase, find all callers or usages, search by description ("where do we handle retries", "find the
+  auth middleware"), or ask why/when something changed. Use the single semantic_search tool instead of
+  multiple grep and read calls — it returns ranked file-and-line snippets in one call and uses far less
+  context.
 ---
 
-# Code Search
+# Semantic Search
 
-Use the project's semantic index instead of grep-then-read loops for discovery. The index is built
-and kept fresh automatically while the session is open.
+One tool — `semantic_search` — covers discovery. Drive it with config options instead of running
+grep-then-read loops. The index is built and kept fresh automatically while the session is open
+(including across git pull / branch switch / commit).
 
-## Decision tree
+## When to use it (and how)
 
-- Don't know which file holds it? Searching by meaning, behavior, or concept? → `code_search`
-- Have an exact symbol, string, or error but want ranked, cross-file hits with related code? → `code_grep`
+- Don't know which file? Searching by meaning, behavior, or concept? → `semantic_search({ query })`
+- Have an exact symbol/string but want ranked, cross-file hits? → `semantic_search({ query, mode: "hybrid" })` (hybrid is the default)
+- Several distinct things to find at once? → `semantic_search({ queries: ["auth", "rate limiting", "retry"] })` (one parallel, merged call)
+- "Why did this file change / show the old diff"? → `semantic_search({ file: "src/foo.ts", lines: "40-80" })`
+- "Why/when did we change X" (decisional/historical)? → `semantic_search({ query })` — it auto-surfaces git history / past conversations as tagged context; or force it with `source: ["history"]`.
 - Need a raw exhaustive regex sweep, or the index may be stale? → built-in `grep`
 - Already know the exact file and line? → `read` it directly
 
 ## Pattern: search, then read
 
-1. `code_search({ query: "where do we validate auth tokens" })`
-2. Pick the top-ranked file and line range from the result.
+1. `semantic_search({ query: "where do we validate auth tokens" })`
+2. Pick the top-ranked file and line range.
 3. `read({ path, offset, limit })` to load just that region.
 
-This replaces "grep for a guess → read the whole file → grep again" with two calls and a fraction of
-the context.
+## Important
 
-## Scoping
-
-Pass `pathPrefix` (e.g. `packages/api`) or `language` (e.g. `typescript`) when the request names a
-package, directory, or language, to tighten results.
-
-## Examples
-
-- "How is rate limiting implemented?" → `code_search({ query: "rate limiting implementation" })`
-- "Find every place that calls validateToken" → `code_grep({ query: "validateToken" })`
-- "Where is the database connection pool created?" → `code_search({ query: "create database connection pool" })`
+Live code is the source of truth. Results tagged `[history]` or `[conversation]` are context about why
+or when something changed — use them to understand intent, then confirm present behavior on the live
+file. Pass `pathPrefix` or `language` to scope when the request names a package, directory, or language.

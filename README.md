@@ -9,9 +9,12 @@
 Backed by [TurboPuffer](https://turbopuffer.com) (vector + BM25), OpenAI `text-embedding-3-large`
 embeddings, and a Cohere `rerank-v3.5` reranker. Built entirely in [Effect v4](https://effect.website).
 
-It gives a coding agent two tools — `code_search` (find code by meaning) and `code_grep` (ranked
-exact-token + related code) — so it answers "where / how is X" in one call instead of many
-grep-then-read round-trips. The index is built and kept fresh automatically while a session is open.
+It gives a coding agent **one** tool — `semantic_search` — driven by config options (`query`,
+`queries[]` for parallel facets, `mode`, `source`, `file`/`lines` for git diffs, `pathPrefix`,
+`language`). It answers "where / how is X" in one call instead of many grep-then-read round-trips, and
+can also surface lower-weighted git-history and past-conversation context for "why / when did this
+change" questions. The index is built and kept fresh automatically while a session is open — including
+across `git pull`, branch switches, and commits.
 
 ## Why
 
