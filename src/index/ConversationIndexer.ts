@@ -97,7 +97,6 @@ const rowOf = (turn: Turn, vector: ReadonlyArray<number>): UpsertRow => ({
   startLine: 0,
   endLine: 0,
   fileHash: turn.sessionId,
-  chunkHash: turn.sessionId,
   sessionId: turn.sessionId,
   ts: turn.ts,
   role: "turn"

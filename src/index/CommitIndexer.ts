@@ -62,7 +62,6 @@ const rowOf = (commit: Commit, vector: ReadonlyArray<number>): UpsertRow => {
     startLine: 0,
     endLine: 0,
     fileHash: commit.sha,
-    chunkHash: commit.sha,
     sha: commit.sha,
     committedAt: commit.committedAt,
     author: commit.author,

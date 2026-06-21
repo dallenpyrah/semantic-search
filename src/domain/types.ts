@@ -17,7 +17,6 @@ export interface Chunk {
   readonly endByte: number
   readonly rawText: string
   readonly embedText: string
-  readonly contentHash: string
   readonly fileHash: string
 }
 
@@ -27,6 +26,7 @@ export interface SearchHit {
   readonly path: string
   readonly language: string
   readonly kind: string
+  readonly symbol: string
   readonly startLine: number
   readonly endLine: number
   readonly snippet: string

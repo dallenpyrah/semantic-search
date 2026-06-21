@@ -74,7 +74,7 @@ export interface SettingsOverride {
   readonly search?: Partial<SearchDefaults>
 }
 
-export const SCHEMA_VERSION = "v2"
+export const SCHEMA_VERSION = "v3"
 
 export const defaultSettings: Settings = {
   embedding: {
@@ -183,7 +183,7 @@ export const defaultSettings: Settings = {
     candidateMultiplier: 6,
     minCandidates: 40,
     perFile: 3,
-    snippetChars: 900,
+    snippetChars: 1600,
     maxOutputBytes: 24_000,
     rankConstant: 60
   }

@@ -119,6 +119,7 @@ export const toHit = (candidate: Candidate, query: string, snippetChars: number)
     path: String(row.path ?? "unknown"),
     language: String(row.language ?? ""),
     kind: String(row.kind ?? ""),
+    symbol: String(row.symbol ?? ""),
     startLine: typeof row.startLine === "number" ? row.startLine : 0,
     endLine: typeof row.endLine === "number" ? row.endLine : 0,
     snippet: snippet(String(row.text ?? ""), query, snippetChars),
@@ -163,7 +164,9 @@ export const formatHits = (
   for (let i = 0; i < hits.length; i += 1) {
     const hit = hits[i]!
     const tag = hit.source === "code" ? "" : `[${hit.source}] `
-    const block = `\n${i + 1}. ${tag}${locationOf(hit)} [${hit.sources.join("+")}; ${hit.score.toFixed(4)}]\n${hit.snippet}`
+    const decl = [hit.kind, hit.symbol].filter((part) => part && part !== "code").join(" ").trim()
+    const label = decl ? `  ${decl}` : ""
+    const block = `\n${i + 1}. ${tag}${locationOf(hit)}${label} [${hit.sources.join("+")}; ${hit.score.toFixed(4)}]\n${hit.snippet}`
     bytes += block.length
     if (bytes > maxBytes) break
     lines.push(block)

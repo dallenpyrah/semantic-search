@@ -1,5 +1,5 @@
 import type { Chunk, ChunkKind } from "../domain/types.ts"
-import { chunkId, sha256 } from "../domain/hash.ts"
+import { chunkId } from "../domain/hash.ts"
 import { isMarkdown, kindForPath, languageForPath } from "./language.ts"
 
 export interface ChunkBudget {
@@ -251,7 +251,6 @@ const buildChunk = (
     endByte: span.end,
     rawText: raw,
     embedText,
-    contentHash: sha256(raw),
     fileHash
   }
 }

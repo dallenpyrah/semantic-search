@@ -25,7 +25,6 @@ const chunkOf = (id: string, path: string, text: string): Chunk => ({
   endByte: text.length,
   rawText: text,
   embedText: text,
-  contentHash: id,
   fileHash: "f"
 })
 

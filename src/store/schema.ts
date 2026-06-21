@@ -10,10 +10,10 @@ export interface UpsertRow {
   readonly path: string
   readonly language: string
   readonly kind: string
+  readonly symbol?: string
   readonly startLine: number
   readonly endLine: number
   readonly fileHash: string
-  readonly chunkHash: string
   readonly sha?: string
   readonly committedAt?: number
   readonly author?: string
@@ -34,10 +34,10 @@ export const rowFromChunk = (chunk: Chunk, vector: ReadonlyArray<number>): Upser
   path: chunk.path,
   language: chunk.language,
   kind: chunk.kind,
+  symbol: chunk.symbol,
   startLine: chunk.startLine,
   endLine: chunk.endLine,
-  fileHash: chunk.fileHash,
-  chunkHash: chunk.contentHash
+  fileHash: chunk.fileHash
 })
 
 export const buildSchema = (dimensions: number): Record<string, unknown> => ({
@@ -48,10 +48,10 @@ export const buildSchema = (dimensions: number): Record<string, unknown> => ({
   path: { type: "string", glob: true, filterable: true },
   language: { type: "string", filterable: true },
   kind: { type: "string", filterable: true },
+  symbol: { type: "string", filterable: true },
   startLine: { type: "uint", filterable: false },
   endLine: { type: "uint", filterable: false },
   fileHash: { type: "string", filterable: true },
-  chunkHash: { type: "string", filterable: false },
   sha: { type: "string", filterable: true },
   committedAt: { type: "uint", filterable: true },
   author: { type: "string", filterable: true },
@@ -88,6 +88,7 @@ export const TpufRow = Schema.Struct({
   pathText: Schema.optional(Schema.String),
   language: Schema.optional(Schema.String),
   kind: Schema.optional(Schema.String),
+  symbol: Schema.optional(Schema.String),
   startLine: Schema.optional(Schema.Number),
   endLine: Schema.optional(Schema.Number),
   sha: Schema.optional(Schema.String),

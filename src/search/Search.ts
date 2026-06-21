@@ -9,7 +9,7 @@ import type { SubQuery } from "../store/schema.ts"
 import { type Candidate, diversify, formatHits, fuse, rerankDoc, toHit } from "./fuse.ts"
 
 const ATTRIBUTES = [
-  "text", "path", "language", "kind", "startLine", "endLine",
+  "text", "path", "language", "kind", "symbol", "startLine", "endLine",
   "source", "sha", "committedAt", "author", "ts", "role"
 ]
 
