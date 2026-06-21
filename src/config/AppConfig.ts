@@ -1,4 +1,4 @@
-import { Config, Context, Effect, FileSystem, Layer, Option, Path, Redacted } from "effect"
+import { Context, Effect, FileSystem, Layer, Option, Path, Redacted } from "effect"
 import { homedir } from "node:os"
 import { ConfigError } from "../domain/errors.ts"
 import {
@@ -57,12 +57,22 @@ const build = (input: AppConfigInput) =>
     const root = path.resolve(input.root)
     const dir = agentDir()
 
-    yield* loadEnvFile(fs, path.join(dir, "semantic-search.env"))
+    const fileEnv = yield* readEnvFile(fs, path.join(dir, "semantic-search.env"))
+    const envValue = (key: string): string | undefined => {
+      const fromFile = fileEnv[key]
+      if (fromFile !== undefined && fromFile.length > 0) return fromFile
+      const fromProc = process.env[key]
+      return fromProc !== undefined && fromProc.length > 0 ? fromProc : undefined
+    }
+    const redactedOption = (key: string): Option.Option<Redacted.Redacted<string>> => {
+      const value = envValue(key)
+      return value === undefined ? Option.none() : Option.some(Redacted.make(value))
+    }
 
     const keys: ResolvedKeys = {
-      openai: yield* Config.option(Config.redacted("OPENAI_API_KEY")),
-      turbopuffer: yield* Config.option(Config.redacted("TURBOPUFFER_API_KEY")),
-      openrouter: yield* Config.option(Config.redacted("OPENROUTER_API_KEY"))
+      openai: redactedOption("OPENAI_API_KEY"),
+      turbopuffer: redactedOption("TURBOPUFFER_API_KEY"),
+      openrouter: redactedOption("OPENROUTER_API_KEY")
     }
 
     const globalOverride = yield* readJsonConfig(fs, path.join(dir, "semantic-search.json"))
@@ -71,7 +81,8 @@ const build = (input: AppConfigInput) =>
       : Option.none<SettingsOverride>()
 
     const settings = applyEnvOverrides(
-      mergeSettings(mergeSettings(defaultSettings, globalOverride), projectOverride)
+      mergeSettings(mergeSettings(defaultSettings, globalOverride), projectOverride),
+      envValue
     )
 
     const missingRequired: Array<string> = []
@@ -116,9 +127,12 @@ const settingsSignature = (settings: Settings): string =>
     excludePatterns: settings.indexing.excludePathPatterns
   })
 
-const applyEnvOverrides = (settings: Settings): Settings => {
-  const region = process.env.TURBOPUFFER_REGION ?? settings.store.region
-  const baseUrl = process.env.TURBOPUFFER_BASE_URL ?? settings.store.baseUrl
+const applyEnvOverrides = (
+  settings: Settings,
+  envValue: (key: string) => string | undefined
+): Settings => {
+  const region = envValue("TURBOPUFFER_REGION") ?? settings.store.region
+  const baseUrl = envValue("TURBOPUFFER_BASE_URL") ?? settings.store.baseUrl
   return { ...settings, store: { ...settings.store, region, baseUrl } }
 }
 
@@ -162,20 +176,22 @@ const readJsonConfig = (
     Effect.catch(() => Effect.succeed(Option.none<SettingsOverride>()))
   )
 
-const loadEnvFile = (fs: FileSystem.FileSystem, file: string): Effect.Effect<void> =>
+const readEnvFile = (fs: FileSystem.FileSystem, file: string): Effect.Effect<Record<string, string>> =>
   fs.readFileString(file).pipe(
     Effect.map((text) => {
+      const out: Record<string, string> = {}
       for (const line of text.split(/\r?\n/)) {
         const trimmed = line.trim()
         if (!trimmed || trimmed.startsWith("#")) continue
         const equals = trimmed.indexOf("=")
         if (equals <= 0) continue
         const key = trimmed.slice(0, equals).trim()
-        if (!/^[A-Z0-9_]+$/.test(key) || process.env[key]) continue
-        process.env[key] = unquote(trimmed.slice(equals + 1).trim())
+        if (!/^[A-Z0-9_]+$/.test(key)) continue
+        out[key] = unquote(trimmed.slice(equals + 1).trim())
       }
+      return out
     }),
-    Effect.catch(() => Effect.void)
+    Effect.catch(() => Effect.succeed({} as Record<string, string>))
   )
 
 const unquote = (value: string): string =>
