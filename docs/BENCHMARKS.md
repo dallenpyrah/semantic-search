@@ -48,20 +48,24 @@ true-grep task goes to `grep`, not `semantic_search`. The flow is `read(SKILL.md
 
 Full cold index of a real monorepo — **2,160 source files → 11,545 chunks + 1,460 git commits**
 (the repo has 15k tracked files, but 14.8k are vendored under `repos/` and correctly excluded).
+Embeddings via OpenRouter `text-embedding-3-large` @ 3072d.
 
-| Metric | Value |
-|---|---|
-| Wall clock | **268s (~4.5 min)** |
-| Peak memory footprint | **363MB** |
-| Max RSS | 856MB (JSC reserved heap; live working set stayed 44–167MB) |
-| Embeddings | OpenRouter `text-embedding-3-large` @ 3072d (one key with the reranker) |
+| Config (`embedConcurrency`×`embedBatch`) | Total | Code phase | Commits phase | Peak footprint | Max RSS |
+|---|---|---|---|---|---|
+| 4 × 128 | 268s | ~204s | (serial) | 363MB | 856MB |
+| 8 × 96 (+ parallel commits) | 184s | 159.6s | 24.0s | 548MB | 1058MB |
+| **10 × 80 (default)** | **170s** | 147.1s | 22.5s | 537MB | 1103MB |
+
+The default favors speed within a ~1GB budget. **Peak memory footprint (real pressure) is ~537MB**; the
+~1.1GB is JSC's reserved-but-reclaimable heap. The live working set stayed 44–167MB across the whole run
+(GC'd every cycle) — **no leak**. 0 rate-limit errors.
 
 Pipeline: a native streaming `readdir` walk feeds `prepareFile` (read/hash/chunk/diff) at
 `scanConcurrency`, which offers each file's new chunks into a **`Queue.bounded`** (suspend strategy →
 the producer blocks when full, so memory is hard-bounded); `embedConcurrency` consumers batch chunks
 **across files** into bulk embedding calls, upsert, then finalize each file's manifest entry once all its
-chunks land. Incremental re-index is ~free (content-hash gate). Tunable via `embedBatch` /
-`embedConcurrency` (defaults 128 / 4 favor memory; raise for faster at higher peak memory).
+chunks land. Commit history embeds in parallel batches too. Incremental re-index is ~free (content-hash
+gate). Tunable via `embedBatch` / `embedConcurrency` (lower both to trade speed for a smaller peak).
 
 ## Multi-source + CoIR
 
