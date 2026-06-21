@@ -3,18 +3,18 @@ import { resolve } from "node:path"
 
 interface Task {
   readonly prompt: string
-  readonly intended: "code_search" | "code_grep" | "grep"
+  readonly intended: "semantic_search" | "code_grep" | "grep"
 }
 
 const tasks: ReadonlyArray<Task> = [
-  { prompt: "Where is rate limiting implemented in this codebase? Find it, then stop.", intended: "code_search" },
-  { prompt: "How does the billing retry logic work? Locate it, then stop.", intended: "code_search" },
-  { prompt: "Where do we issue and validate access tokens? Find it, then stop.", intended: "code_search" },
-  { prompt: "Find every place that references validateAccessToken, then stop.", intended: "code_grep" },
+  { prompt: "Where is rate limiting implemented in this codebase? Find it, then stop.", intended: "semantic_search" },
+  { prompt: "How does the billing retry logic work? Locate it, then stop.", intended: "semantic_search" },
+  { prompt: "Where do we issue and validate access tokens? Find it, then stop.", intended: "semantic_search" },
+  { prompt: "Find every place that references validateAccessToken, then stop.", intended: "semantic_search" },
   { prompt: "List every TODO comment in the codebase using a raw text search, then stop.", intended: "grep" }
 ]
 
-const RETRIEVAL = new Set(["code_search", "code_grep", "grep", "find", "bash", "ls"])
+const RETRIEVAL = new Set(["semantic_search", "grep", "find", "bash", "ls"])
 
 const PI = "/Users/dallen.pyrah/.bun/bin/pi"
 const EXT = resolve(import.meta.dirname, "..", "src", "pi", "extension.ts")
@@ -52,7 +52,7 @@ const run = (task: Task) => {
   const retrieval = calls.filter((call) => RETRIEVAL.has(call))
   const first = retrieval[0] ?? "none"
   const usedGrep = calls.includes("grep")
-  const usedOurs = calls.includes("code_search") || calls.includes("code_grep")
+  const usedOurs = calls.includes("semantic_search")
   return { task, calls, first, usedGrep, usedOurs }
 }
 
@@ -62,7 +62,7 @@ let adopted = 0
 let misroute = 0
 let totalCalls = 0
 for (const row of rows) {
-  const ours = row.first === "code_search" || row.first === "code_grep"
+  const ours = row.first === "semantic_search"
   if (row.task.intended === "grep") {
     if (ours) misroute += 1
   } else if (ours) {
@@ -76,6 +76,6 @@ for (const row of rows) {
 
 const discovery = tasks.filter((t) => t.intended !== "grep").length
 process.stdout.write(
-  `\nADOPTION: ${adopted}/${discovery} discovery tasks routed to code_search/code_grep first` +
+  `\nADOPTION: ${adopted}/${discovery} discovery tasks routed to semantic_search first` +
     ` | mis-route ${misroute} | avg tool calls ${(totalCalls / tasks.length).toFixed(1)}\n`
 )

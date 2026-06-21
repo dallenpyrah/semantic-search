@@ -29,24 +29,33 @@ Tuning that moved the numbers (each verified by re-running the eval):
 
 ## Tool adoption (real Pi, `pi -p --mode json`)
 
-4 tasks over a pre-indexed sample repo, only this extension + skill loaded.
+One tool, `semantic_search`. 5 tasks over a pre-indexed sample repo, only this extension + skill loaded.
 
 | Task type | Prompt | First retrieval call | grep used | Tool calls |
 |---|---|---|---|---|
-| discovery | "Where is rate limiting implemented?" | `code_search` | no | 3 |
-| discovery | "How does the billing retry logic work?" | `code_search` | no | 3 |
-| discovery | "Where do we issue and validate access tokens?" | `code_search` | no | 3 |
-| exact | "Find every place that references validateAccessToken" | `code_grep` | no | 3 |
+| discovery | "Where is rate limiting implemented?" | `semantic_search` | no | 3 |
+| discovery | "How does the billing retry logic work?" | `semantic_search` | no | 3 |
+| discovery | "Where do we issue and validate access tokens?" | `semantic_search` | no | 3 |
+| exact | "Find every place that references validateAccessToken" | `semantic_search` | no | 3 |
+| true-grep | "List every TODO comment using a raw text search" | `grep` | yes | 1 |
 
-**Discovery adoption: 3/3 routed to `code_search` first. Mis-route: 0. Avg 2.4 tool calls.** The
-flow is `read(SKILL.md)` → `code_search` → `read(target file)`: the agent loads the skill once, then
-uses the semantic tools for the rest of the session.
+**Adoption: 4/4 discovery routed to `semantic_search` first. Mis-route: 0. Avg 2.6 tool calls.**
+Consolidating from three tools to one did not reduce adoption. Routing is correct, not maximal: the
+true-grep task goes to `grep`, not `semantic_search`. The flow is `read(SKILL.md)` → `semantic_search`
+→ `read(target file)`.
 
-Routing is correct, not maximal. A true-grep task ("list every TODO comment using a raw text
-search") goes to `grep` (1 call), not `code_search` — no over-routing. An *exhaustive* enumeration
-("find **every** place that references X") also goes to `grep`, which is right: `code_grep` returns a
-ranked top-N, while "every place" wants an exhaustive match list. The agent favors the semantic tools
-for discovery (the high-value case) and keeps `grep` for raw and exhaustive sweeps.
+## Multi-source + CoIR
+
+- **Sources:** `code` (authoritative), `docs`, `history` (git commits), `conversation` (Pi sessions,
+  opt-in). A plain query defaults to `code+docs`; a cue router widens to history/conversation only on
+  why/when/decisional phrasing, with per-source quotas so history/conversation never drown code.
+  Verified live (`test/history.live.test.ts`): a code query returns code; "why did we change the cache
+  eviction" surfaces the commit; `file:` returns the real diffs that changed a file.
+- **CoIR baseline** (the objective tracker, `eval/benchmark/coir.ts`): codetrans-dl (code→code, the
+  hardest CoIR task) embedding-only nDCG@10 = **18.89** with `text-embedding-3-large`. The public
+  leaderboard top is 67.41 (SFR-Embedding-Code-2B, a code-specialized model); the climb toward #1 runs
+  through a code-specialized embedder (tracked in `docs/research/auto/ROADMAP.md`). The harness is
+  apples-to-apples (graded nDCG@10 by corpus id, R@100 = 100% confirms correct ingestion).
 
 ## Why this beats grep-then-read for discovery
 
