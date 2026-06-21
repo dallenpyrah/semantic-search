@@ -8,3 +8,5 @@ coverage/
 *.tsbuildinfo
 .eval-cache/
 scratch/
+eval/.cache/
+eval/benchmark/.cache/
