@@ -1,7 +1,5 @@
-import { Array as Arr, Context, Effect, Layer, Schedule } from "effect"
-import { EmbeddingModel } from "effect/unstable/ai"
-import { FetchHttpClient } from "effect/unstable/http"
-import { OpenAiClient, OpenAiEmbeddingModel } from "@effect/ai-openai"
+import { Array as Arr, Context, Effect, Layer, Redacted, Schedule, Schema, flow } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
 import { AppConfig, requireKey } from "../config/AppConfig.ts"
 import { EmbedError } from "../domain/errors.ts"
 import { VectorCache } from "./VectorCache.ts"
@@ -11,29 +9,20 @@ const PROVIDERS = {
   openai: { url: "https://api.openai.com/v1", keyName: "OPENAI_API_KEY" }
 } as const
 
-const clientLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* AppConfig
-    const provider = PROVIDERS[config.settings.embedding.provider]
-    const key = config.settings.embedding.provider === "openai" ? config.keys.openai : config.keys.openrouter
-    const apiKey = yield* requireKey(key, provider.keyName)
-    return OpenAiClient.layer({ apiKey, apiUrl: config.settings.embedding.baseUrl ?? provider.url })
-  })
-).pipe(Layer.provide(FetchHttpClient.layer))
-
-const modelLayer = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* AppConfig
-    return OpenAiEmbeddingModel.model(config.settings.embedding.model, {
-      dimensions: config.settings.embedding.dimensions
-    })
-  })
-).pipe(Layer.provide(clientLayer))
+const EmbeddingResponse = Schema.Struct({
+  data: Schema.Array(Schema.Struct({ index: Schema.Number, embedding: Schema.Array(Schema.Number) }))
+})
 
 const retrySchedule = Schedule.exponential("200 millis", 2).pipe(
   Schedule.jittered,
   Schedule.both(Schedule.recurs(5))
 )
+
+const messageOf = (error: unknown): string => {
+  if (error instanceof Error) return error.message
+  const message = (error as { message?: unknown })?.message
+  return typeof message === "string" ? message : String(error)
+}
 
 export class Embeddings extends Context.Service<Embeddings, {
   embed(
@@ -45,20 +34,43 @@ export class Embeddings extends Context.Service<Embeddings, {
     Embeddings,
     Effect.gen(function* () {
       const config = yield* AppConfig
-      const model = yield* EmbeddingModel.EmbeddingModel
       const cache = yield* VectorCache
       const indexing = config.settings.indexing
-      const dimensions = config.settings.embedding.dimensions
+      const embedding = config.settings.embedding
+      const dimensions = embedding.dimensions
+      const provider = PROVIDERS[embedding.provider]
+      const key = embedding.provider === "openai" ? config.keys.openai : config.keys.openrouter
+      const apiKey = yield* requireKey(key, provider.keyName)
+      const baseUrl = embedding.baseUrl ?? provider.url
+
+      const client = (yield* HttpClient.HttpClient).pipe(
+        HttpClient.mapRequest(
+          flow(
+            HttpClientRequest.prependUrl(baseUrl),
+            HttpClientRequest.bearerToken(Redacted.value(apiKey)),
+            HttpClientRequest.acceptJson
+          )
+        ),
+        HttpClient.filterStatusOk,
+        HttpClient.transformResponse(Effect.timeout("60 seconds"))
+      )
 
       const embedBatch = (batch: ReadonlyArray<string>) =>
-        model.embedMany(batch).pipe(
-          Effect.map((response) => response.embeddings.map((item) => item.vector as ReadonlyArray<number>)),
-          Effect.retry({ schedule: retrySchedule, while: (error) => error.isRetryable }),
+        HttpClientRequest.post("/embeddings").pipe(
+          HttpClientRequest.bodyJsonUnsafe({ model: embedding.model, input: batch, dimensions }),
+          client.execute,
+          Effect.flatMap(HttpClientResponse.schemaBodyJson(EmbeddingResponse)),
+          Effect.map((response) =>
+            [...response.data]
+              .sort((left, right) => left.index - right.index)
+              .map((item) => item.embedding as ReadonlyArray<number>)
+          ),
+          Effect.retry(retrySchedule),
           Effect.mapError(
             (error) =>
               new EmbedError({
-                message: `embedding request failed: ${error.message}`,
-                retryable: error.isRetryable,
+                message: `embedding request failed: ${messageOf(error)}`,
+                retryable: true,
                 cause: error
               })
           )
@@ -86,5 +98,5 @@ export class Embeddings extends Context.Service<Embeddings, {
 
       return Embeddings.of({ embed, dimensions })
     })
-  ).pipe(Layer.provide(modelLayer), Layer.provide(VectorCache.layer))
+  ).pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(VectorCache.layer))
 }
