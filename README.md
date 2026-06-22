@@ -1,8 +1,8 @@
 <div align="center">
 
-# pi-semantic-search
+# semantic-search
 
-**Effect-native semantic + hybrid code search — a Pi coding-agent extension and a standalone CLI.**
+**Effect-native semantic + hybrid code search — OpenCode custom tools, a Pi coding-agent extension, and a standalone CLI.**
 
 </div>
 
@@ -27,6 +27,18 @@ across `git pull`, branch switches, and commits.
   grep fallback (`docs/BENCHMARKS.md`).
 - **Safe to run for hours.** Incremental indexing (only changed chunks re-embed), a bounded watcher
   queue, scoped resources, and a leak test that asserts no watcher/timer growth.
+
+## Install (as an OpenCode custom tool)
+
+```bash
+npm install --prefix ~/.config/opencode git+https://github.com/dallenpyrah/pi-semantic-search.git
+mkdir -p ~/.config/opencode/tools
+cat > ~/.config/opencode/tools/semantic_search.ts <<'EOF'
+export { default } from "semantic-search/opencode"
+EOF
+```
+
+OpenCode loads the filename as the tool name, so this registers `semantic_search` globally.
 
 ## Install (as a Pi extension)
 
@@ -80,7 +92,7 @@ Control which folders are indexed globally — e.g. `~/.pi/agent/semantic-search
 
 See `docs/ARCHITECTURE.md`. Deep modules behind narrow `Effect` services: `Embeddings`,
 `Turbopuffer`, `Reranker`, `Chunker`, `Manifest`, `Indexer`, `Watcher`, `Search` — composed into one
-layer, run as a `ManagedRuntime` inside Pi and via `effect/unstable/cli` standalone.
+layer, run as a `ManagedRuntime` inside OpenCode tools and Pi, and via `effect/unstable/cli` standalone.
 
 ## Develop
 

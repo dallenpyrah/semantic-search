@@ -10,3 +10,4 @@ coverage/
 scratch/
 eval/.cache/
 eval/benchmark/.cache/
+.opencode/goals/

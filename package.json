@@ -1,10 +1,11 @@
 {
-  "name": "pi-semantic-search",
+  "name": "semantic-search",
   "version": "0.1.0",
-  "description": "Effect-native semantic and hybrid code search: a Pi coding-agent extension and standalone CLI backed by TurboPuffer and OpenAI embeddings.",
+  "description": "Effect-native semantic and hybrid code search: OpenCode tools, a Pi coding-agent extension, and a standalone CLI backed by TurboPuffer and OpenAI embeddings.",
   "license": "Apache-2.0",
   "type": "module",
   "keywords": [
+    "opencode-tool",
     "pi-package",
     "semantic-search",
     "code-search",
@@ -17,6 +18,7 @@
   },
   "exports": {
     ".": "./src/index.ts",
+    "./opencode": "./src/opencode/semantic_search.ts",
     "./pi": "./src/pi/extension.ts"
   },
   "pi": {
@@ -36,6 +38,7 @@
   "dependencies": {
     "@effect/ai-openai": "4.0.0-beta.85",
     "@effect/platform-node": "4.0.0-beta.85",
+    "@opencode-ai/plugin": "^1.17.9",
     "effect": "4.0.0-beta.85",
     "js-tiktoken": "^1.0.21",
     "typebox": "1.1.38"
