@@ -28,17 +28,9 @@ across `git pull`, branch switches, and commits.
 - **Safe to run for hours.** Incremental indexing (only changed chunks re-embed), a bounded watcher
   queue, scoped resources, and a leak test that asserts no watcher/timer growth.
 
-## Install (as an OpenCode custom tool)
+## Install (as an OpenCode plugin)
 
-```bash
-npm install --prefix ~/.config/opencode git+https://github.com/dallenpyrah/semantic-search.git
-mkdir -p ~/.config/opencode/tools
-cat > ~/.config/opencode/tools/semantic_search.ts <<'EOF'
-export { default } from "semantic-search/opencode"
-EOF
-```
-
-Then add the package plugin to `~/.config/opencode/opencode.jsonc`:
+Add the package plugin to `~/.config/opencode/opencode.jsonc`:
 
 ```json
 {
@@ -46,7 +38,7 @@ Then add the package plugin to `~/.config/opencode/opencode.jsonc`:
 }
 ```
 
-OpenCode loads the filename as the tool name, so this registers `semantic_search` globally. The plugin starts the indexer/watcher when OpenCode starts and stops it on shutdown.
+The plugin registers the `semantic_search` tool, starts the indexer/watcher when OpenCode starts, and stops it on shutdown.
 
 ## Install (as a Pi extension)
 
