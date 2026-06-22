@@ -1,17 +1,10 @@
 import { tool } from "@opencode-ai/plugin"
-import { Effect, Fiber, ManagedRuntime } from "effect"
-import { basename, resolve } from "node:path"
-import { AppConfig } from "../config/AppConfig.ts"
-import { CommitIndexer } from "../index/CommitIndexer.ts"
-import { ConversationIndexer } from "../index/ConversationIndexer.ts"
+import { Effect } from "effect"
 import { GitHistory } from "../index/GitHistory.ts"
-import { Indexer } from "../index/Indexer.ts"
 import { Search } from "../search/Search.ts"
-import { Turbopuffer } from "../store/Turbopuffer.ts"
-import { Watcher } from "../watch/Watcher.ts"
-import { type AppError, type AppServices, appLayer, configLayer } from "../runtime/layers.ts"
 import { type SearchMode, type SearchOptions, type SourceType } from "../domain/types.ts"
 import { semanticSearchTool } from "../pi/tools.ts"
+import { runtimeFor, type RuntimeState } from "./runtime.ts"
 
 interface SearchParams {
   readonly query?: string
@@ -24,20 +17,6 @@ interface SearchParams {
   readonly pathPrefix?: string
   readonly language?: string
 }
-
-type AppRuntime = ManagedRuntime.ManagedRuntime<AppServices, AppError>
-
-interface RuntimeState {
-  readonly root: string
-  readonly enabled: boolean
-  readonly namespace: string
-  readonly projectName: string
-  readonly disabledReason: string
-  readonly runtime?: AppRuntime
-  readonly fibers: ReadonlyArray<Fiber.Fiber<unknown, unknown>>
-}
-
-const runtimes = new Map<string, Promise<RuntimeState>>()
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -53,69 +32,6 @@ const facetsOf = (params: SearchParams): ReadonlyArray<string> => {
   if (fromArray.length > 0) return fromArray
   const single = params.query?.trim()
   return single ? [single] : []
-}
-
-const startRuntime = async (root: string): Promise<RuntimeState> => {
-  const probe = await Effect.runPromise(
-    Effect.gen(function* () {
-      const config = yield* AppConfig
-      return { missing: config.missingRequired, namespace: config.namespace }
-    }).pipe(Effect.provide(configLayer({ root, trusted: true })))
-  ).catch(() => ({ missing: ["configuration"], namespace: "" }))
-
-  if (probe.missing.length > 0) {
-    return {
-      root,
-      enabled: false,
-      namespace: probe.namespace,
-      projectName: basename(root),
-      disabledReason: `code search disabled; set ${probe.missing.join(", ")}`,
-      fibers: []
-    }
-  }
-
-  const runtime = ManagedRuntime.make(appLayer({ root, trusted: true }))
-  const supervised = (name: string, effect: Effect.Effect<unknown, never, AppServices>) =>
-    runtime.runFork(effect.pipe(Effect.tapCause((cause) => Effect.logError(`semantic-search: ${name} fiber failed`, cause))))
-
-  const fibers = [
-    supervised(
-      "warm",
-      Effect.gen(function* () {
-        const store = yield* Turbopuffer
-        yield* store.warm()
-      })
-    ),
-    supervised(
-      "watch",
-      Effect.gen(function* () {
-        const watcher = yield* Watcher
-        yield* Effect.scoped(watcher.run())
-      })
-    ),
-    supervised(
-      "index",
-      Effect.gen(function* () {
-        const indexer = yield* Indexer
-        yield* indexer.indexAll()
-        const commits = yield* CommitIndexer
-        yield* commits.run()
-        const conversations = yield* ConversationIndexer
-        yield* conversations.run()
-      })
-    )
-  ]
-
-  return { root, enabled: true, namespace: probe.namespace, projectName: basename(root), disabledReason: "", runtime, fibers }
-}
-
-const runtimeFor = (root: string): Promise<RuntimeState> => {
-  const resolved = resolve(root)
-  const existing = runtimes.get(resolved)
-  if (existing) return existing
-  const started = startRuntime(resolved)
-  runtimes.set(resolved, started)
-  return started
 }
 
 const runSearch = async (state: RuntimeState, params: SearchParams, signal: AbortSignal) => {

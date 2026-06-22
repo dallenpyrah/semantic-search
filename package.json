@@ -19,6 +19,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./opencode": "./src/opencode/semantic_search.ts",
+    "./opencode-plugin": "./src/opencode/plugin.ts",
     "./pi": "./src/pi/extension.ts"
   },
   "pi": {
