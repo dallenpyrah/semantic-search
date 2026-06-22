@@ -31,7 +31,7 @@ across `git pull`, branch switches, and commits.
 ## Install (as an OpenCode custom tool)
 
 ```bash
-npm install --prefix ~/.config/opencode git+https://github.com/dallenpyrah/pi-semantic-search.git
+npm install --prefix ~/.config/opencode git+https://github.com/dallenpyrah/semantic-search.git
 mkdir -p ~/.config/opencode/tools
 cat > ~/.config/opencode/tools/semantic_search.ts <<'EOF'
 export { default } from "semantic-search/opencode"
@@ -43,7 +43,7 @@ OpenCode loads the filename as the tool name, so this registers `semantic_search
 ## Install (as a Pi extension)
 
 ```bash
-pi install git:https://github.com/dallenpyrah/pi-semantic-search.git
+pi install git:https://github.com/dallenpyrah/semantic-search.git
 ```
 
 The extension auto-starts on `session_start`: it indexes the project, warms the namespace, and
