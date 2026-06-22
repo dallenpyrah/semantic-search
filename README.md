@@ -36,10 +36,14 @@ mkdir -p ~/.config/opencode/tools
 cat > ~/.config/opencode/tools/semantic_search.ts <<'EOF'
 export { default } from "semantic-search/opencode"
 EOF
-mkdir -p ~/.config/opencode/plugins
-cat > ~/.config/opencode/plugins/semantic_search.ts <<'EOF'
-export { default } from "semantic-search/opencode-plugin"
-EOF
+```
+
+Then add the package plugin to `~/.config/opencode/opencode.jsonc`:
+
+```json
+{
+  "plugin": ["git+https://github.com/dallenpyrah/semantic-search.git"]
+}
 ```
 
 OpenCode loads the filename as the tool name, so this registers `semantic_search` globally. The plugin starts the indexer/watcher when OpenCode starts and stops it on shutdown.
