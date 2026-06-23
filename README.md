@@ -2,7 +2,7 @@
 
 # semantic-search
 
-**Effect-native semantic + hybrid code search — OpenCode custom tools, a Pi coding-agent extension, and a standalone CLI.**
+**Effect-native semantic + hybrid code search — Amp/OpenCode custom tools, a Pi coding-agent extension, and a standalone CLI.**
 
 </div>
 
@@ -14,8 +14,8 @@ It gives a coding agent **one** tool — `semantic_search` — driven by config 
 `queries[]` for parallel facets, `mode`, `source`, `file`/`lines` for git diffs, `pathPrefix`,
 `language`). It answers "where / how is X" in one call instead of many grep-then-read round-trips, and
 can also surface lower-weighted git-history and past-conversation context for "why / when did this
-change" questions. The index is built and kept fresh automatically while a session is open — including
-across `git pull`, branch switches, and commits.
+change" questions. The index is built and kept fresh automatically while an agent integration is
+running — including across `git pull`, branch switches, and commits.
 
 ## Why
 
@@ -27,6 +27,46 @@ across `git pull`, branch switches, and commits.
   grep fallback (`docs/BENCHMARKS.md`).
 - **Safe to run for hours.** Incremental indexing (only changed chunks re-embed), a bounded watcher
   queue, scoped resources, and a leak test that asserts no watcher/timer growth.
+
+## Install (as an Amp plugin)
+
+This repo ships a trusted Amp adapter in `src/amp/`:
+
+- `src/amp/plugin.ts` registers the `semantic_search` tool and starts the indexer/watcher on
+  `session.start`.
+- `src/amp/skills/searching-code/SKILL.md` teaches Amp when to prefer `semantic_search` over grep/read
+  loops.
+- `src/amp/install.ts` installs both into your Amp agent config.
+
+From this checkout:
+
+```bash
+bun install
+bun run amp:install
+```
+
+By default this writes a user-wide plugin loader to `~/.config/amp/plugins/semantic-search.ts` and a
+user-wide skill to `~/.config/agents/skills/searching-code`. For a project-local install instead, run:
+
+```bash
+bun run amp:install -- --workspace --workspace-root /path/to/repo
+```
+
+Reload plugins from the Amp command palette (`plugins: reload`) or restart Amp. Use the
+`Semantic Search Status`, `Semantic Search Stop`, and `Semantic Search Restart` commands to inspect or
+control the long-lived indexer/watcher. Amp currently exposes a start event but not a session shutdown
+event, so the watcher is scoped to the Amp plugin process after first start.
+
+Credentials are the same as the Pi/OpenCode integrations:
+
+- `OPENROUTER_API_KEY` (required — embeddings + reranker by default)
+- `TURBOPUFFER_API_KEY` + `TURBOPUFFER_REGION` (required — storage)
+- `OPENAI_API_KEY` (only if `embedding.provider` is set to `openai`)
+
+Integration choice: for trusted local use, a plugin plus skill is the shortest correct path. It reuses
+the in-process TypeScript/Effect runtime directly and avoids an extra MCP server dependency or process.
+For non-Amp clients, the next layer should be a small MCP stdio server using the same
+`semantic_search` surface.
 
 ## Install (as an OpenCode plugin)
 

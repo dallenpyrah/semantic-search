@@ -14,10 +14,12 @@
     "embeddings"
   ],
   "bin": {
-    "semsearch": "./src/cli/main.ts"
+    "semsearch": "./src/cli/main.ts",
+    "semsearch-amp-install": "./src/amp/install.ts"
   },
   "exports": {
     ".": "./src/index.ts",
+    "./amp": "./src/amp/plugin.ts",
     "./library": "./src/index.ts",
     "./opencode": "./src/opencode/semantic_search.ts",
     "./opencode-plugin": "./src/opencode/plugin.ts",
@@ -32,6 +34,7 @@
     ]
   },
   "scripts": {
+    "amp:install": "bun src/amp/install.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test eval",
     "test": "bun test",

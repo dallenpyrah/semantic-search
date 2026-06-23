@@ -80,7 +80,10 @@ export const runtimeFor = (root: string): Promise<RuntimeState> => {
   const resolved = resolve(root)
   const existing = runtimes.get(resolved)
   if (existing) return existing
-  const started = startRuntime(resolved)
+  const started = startRuntime(resolved).catch((error) => {
+    runtimes.delete(resolved)
+    throw error
+  })
   runtimes.set(resolved, started)
   return started
 }
