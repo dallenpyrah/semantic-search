@@ -68,16 +68,22 @@ const sourceSet = new Set<string>(ALL_SOURCES)
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-const projectRoot = (): string => {
+const rootCandidate = (): string => {
   if (process.env.SEMANTIC_SEARCH_ROOT?.trim()) return resolve(process.env.SEMANTIC_SEARCH_ROOT.trim())
+  if (process.env.PWD?.trim()) return resolve(process.env.PWD.trim())
+  return process.cwd()
+}
+
+const projectRoot = (): string => {
+  const cwd = rootCandidate()
   try {
     return execFileSync("git", ["rev-parse", "--show-toplevel"], {
-      cwd: process.cwd(),
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
     }).trim()
   } catch {
-    return process.cwd()
+    return cwd
   }
 }
 

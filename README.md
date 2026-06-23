@@ -56,6 +56,8 @@ Reload plugins from the Amp command palette (`plugins: reload`) or restart Amp. 
 `Semantic Search Status`, `Semantic Search Stop`, and `Semantic Search Restart` commands to inspect or
 control the long-lived indexer/watcher. Amp currently exposes a start event but not a session shutdown
 event, so the watcher is scoped to the Amp plugin process after first start.
+The installed plugin resolves the target root from `SEMANTIC_SEARCH_ROOT` when set, otherwise from the
+Amp launch directory (`PWD`) and its git root.
 
 Credentials are the same as the Pi/OpenCode integrations:
 
