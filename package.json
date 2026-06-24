@@ -34,6 +34,7 @@
     ]
   },
   "scripts": {
+    "amp:build": "bun build src/amp/plugin.ts --target=node --format=esm --banner '// @amp-plugin updated automatically from https://raw.githubusercontent.com/dallenpyrah/semantic-search/main/dist/amp/semantic-search.ts' --outfile=dist/amp/semantic-search.ts",
     "amp:install": "bun src/amp/install.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src test eval",

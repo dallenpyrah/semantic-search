@@ -42,15 +42,24 @@ From this checkout:
 
 ```bash
 bun install
+bun run amp:build
 bun run amp:install
 ```
 
-By default this writes a user-wide plugin loader to `~/.config/amp/plugins/semantic-search.ts` and a
-user-wide skill to `~/.config/agents/skills/searching-code`. For a project-local install instead, run:
+Amp's `plugins add` command currently only accepts hosted
+`https://ampcode.com/@amp/plugins/*.ts` URLs. Until semantic-search is published there, the installer
+copies the self-contained bundled plugin to `~/.config/amp/plugins/semantic-search.ts` and writes a
+user-wide skill to `~/.config/agents/skills/searching-code`. The installed plugin contains no
+`file://` import back to this checkout. For a project-local install instead, run:
 
 ```bash
 bun run amp:install -- --workspace --workspace-root /path/to/repo
 ```
+
+The bundled plugin's update directive points at
+`https://raw.githubusercontent.com/dallenpyrah/semantic-search/main/dist/amp/semantic-search.ts`.
+If semantic-search is later published to Amp's hosted registry, pass that URL with `--plugin-url <url>`
+or `SEMANTIC_SEARCH_AMP_PLUGIN_URL` and the installer will delegate to `amp plugins add`.
 
 Reload plugins from the Amp command palette (`plugins: reload`) or restart Amp. Use the
 `Semantic Search Status`, `Semantic Search Stop`, and `Semantic Search Restart` commands to inspect or
