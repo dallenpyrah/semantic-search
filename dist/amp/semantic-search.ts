@@ -35632,8 +35632,8 @@ var defaultSettings = {
     embedTokenCap: 8000,
     embedBatch: 128,
     embedConcurrency: 10,
-    upsertConcurrency: 4,
-    upsertBatch: 512,
+    upsertConcurrency: 2,
+    upsertBatch: 256,
     vectorCacheEnabled: true,
     debounceMs: 400,
     maxQueueSize: 4096,
@@ -38122,6 +38122,9 @@ class Manifest extends exports_Context.Service()("semantic-search/Manifest") {
   }));
 }
 
+// src/store/Turbopuffer.ts
+import { gzipSync } from "node:zlib";
+
 // src/store/schema.ts
 var pathText = (path) => path.replace(/[/_.-]+/g, " ").trim();
 var rowFromChunk = (chunk, vector) => ({
@@ -38197,7 +38200,14 @@ var httpStatus = (error) => {
   const status = response.status;
   return typeof status === "number" ? status : undefined;
 };
-var messageOf2 = (error) => error instanceof Error ? error.message : String(error);
+var messageOf2 = (error) => {
+  if (error instanceof Error && error.message)
+    return error.message;
+  if (typeof error === "object" && error !== null && "_tag" in error) {
+    return String(error._tag);
+  }
+  return String(error);
+};
 
 class Turbopuffer extends exports_Context.Service()("semantic-search/Turbopuffer") {
   static layer = exports_Layer.effect(Turbopuffer, exports_Effect.gen(function* () {
@@ -38208,7 +38218,9 @@ class Turbopuffer extends exports_Context.Service()("semantic-search/Turbopuffer
     const consistency = config.settings.store.consistency;
     const baseUrl2 = config.settings.store.baseUrl ?? `https://${config.settings.store.region}.turbopuffer.com`;
     const schema = buildSchema(dimensions);
-    const client = (yield* exports_HttpClient.HttpClient).pipe(exports_HttpClient.mapRequest(flow(exports_HttpClientRequest.prependUrl(baseUrl2), exports_HttpClientRequest.bearerToken(exports_Redacted.value(apiKey)), exports_HttpClientRequest.acceptJson, exports_HttpClientRequest.setHeader("Accept-Encoding", "identity"))), exports_HttpClient.filterStatusOk, exports_HttpClient.transformResponse(exports_Effect.timeout("30 seconds")), exports_HttpClient.retryTransient({ schedule: retrySchedule2, times: 4 }));
+    const baseClient = (yield* exports_HttpClient.HttpClient).pipe(exports_HttpClient.mapRequest(flow(exports_HttpClientRequest.prependUrl(baseUrl2), exports_HttpClientRequest.bearerToken(exports_Redacted.value(apiKey)), exports_HttpClientRequest.acceptJson, exports_HttpClientRequest.setHeader("Accept-Encoding", "identity"))), exports_HttpClient.filterStatusOk);
+    const client = baseClient.pipe(exports_HttpClient.transformResponse(exports_Effect.timeout("30 seconds")), exports_HttpClient.retryTransient({ schedule: retrySchedule2, times: 4 }));
+    const writeClient = baseClient.pipe(exports_HttpClient.transformResponse(exports_Effect.timeout("120 seconds")), exports_HttpClient.retryTransient({ schedule: retrySchedule2, times: 4 }));
     const toStoreError = (error) => {
       const status = httpStatus(error);
       return new StoreError({
@@ -38218,7 +38230,10 @@ class Turbopuffer extends exports_Context.Service()("semantic-search/Turbopuffer
         cause: error
       });
     };
-    const write = (body) => exports_HttpClientRequest.post(`/v2/namespaces/${namespace}`).pipe(exports_HttpClientRequest.bodyJsonUnsafe(body), client.execute, exports_Effect.asVoid, exports_Effect.mapError(toStoreError));
+    const write = (body) => exports_Effect.suspend(() => {
+      const compressed = gzipSync(JSON.stringify(body));
+      return exports_HttpClientRequest.post(`/v2/namespaces/${namespace}`).pipe(exports_HttpClientRequest.bodyUint8Array(new Uint8Array(compressed), "application/json"), exports_HttpClientRequest.setHeader("Content-Encoding", "gzip"), writeClient.execute, exports_Effect.asVoid, exports_Effect.mapError(toStoreError));
+    });
     const upsert = (rows) => rows.length === 0 ? exports_Effect.void : write({ distance_metric: "cosine_distance", schema, upsert_rows: rows });
     const replaceFile = (path, rows) => write({
       distance_metric: "cosine_distance",
@@ -39082,7 +39097,7 @@ class Indexer extends exports_Context.Service()("semantic-search/Indexer") {
         if (jobs.length === 0)
           return;
         const rows = jobs.flatMap((job) => job.rows);
-        const ok = yield* store.upsert(rows).pipe(exports_Effect.as(true), exports_Effect.catch((error) => exports_Effect.logWarning("semantic-search: upsert failed, leaving files for retry next run", error).pipe(exports_Effect.as(false))));
+        const ok = yield* store.upsert(rows).pipe(exports_Effect.as(true), exports_Effect.catch((error) => exports_Effect.logWarning(`semantic-search: upsert failed (rows=${rows.length}, files=${jobs.reduce((n, job) => n + job.paths.length, 0)}), leaving files for retry next run`, error).pipe(exports_Effect.as(false))));
         processed += rows.length;
         if (ok)
           yield* finalize2(jobs.flatMap((job) => job.paths));

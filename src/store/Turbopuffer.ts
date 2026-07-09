@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib"
 import { Context, Effect, Layer, Option, Redacted, Schedule, flow } from "effect"
 import { HttpClient, HttpClientRequest, HttpClientResponse, FetchHttpClient } from "effect/unstable/http"
 import { AppConfig, requireKey } from "../config/AppConfig.ts"
@@ -24,8 +25,13 @@ const httpStatus = (error: unknown): number | undefined => {
   return typeof status === "number" ? status : undefined
 }
 
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+const messageOf = (error: unknown): string => {
+  if (error instanceof Error && error.message) return error.message
+  if (typeof error === "object" && error !== null && "_tag" in error) {
+    return String((error as { _tag: unknown })._tag)
+  }
+  return String(error)
+}
 
 export class Turbopuffer extends Context.Service<Turbopuffer, {
   readonly namespace: string
@@ -50,7 +56,7 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
         config.settings.store.baseUrl ?? `https://${config.settings.store.region}.turbopuffer.com`
       const schema = buildSchema(dimensions)
 
-      const client = (yield* HttpClient.HttpClient).pipe(
+      const baseClient = (yield* HttpClient.HttpClient).pipe(
         HttpClient.mapRequest(
           flow(
             HttpClientRequest.prependUrl(baseUrl),
@@ -59,8 +65,16 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
             HttpClientRequest.setHeader("Accept-Encoding", "identity")
           )
         ),
-        HttpClient.filterStatusOk,
+        HttpClient.filterStatusOk
+      )
+
+      const client = baseClient.pipe(
         HttpClient.transformResponse(Effect.timeout("30 seconds")),
+        HttpClient.retryTransient({ schedule: retrySchedule, times: 4 })
+      )
+
+      const writeClient = baseClient.pipe(
+        HttpClient.transformResponse(Effect.timeout("120 seconds")),
         HttpClient.retryTransient({ schedule: retrySchedule, times: 4 })
       )
 
@@ -75,12 +89,16 @@ export class Turbopuffer extends Context.Service<Turbopuffer, {
       }
 
       const write = (body: Record<string, unknown>): Effect.Effect<void, StoreError> =>
-        HttpClientRequest.post(`/v2/namespaces/${namespace}`).pipe(
-          HttpClientRequest.bodyJsonUnsafe(body),
-          client.execute,
-          Effect.asVoid,
-          Effect.mapError(toStoreError)
-        )
+        Effect.suspend(() => {
+          const compressed = gzipSync(JSON.stringify(body))
+          return HttpClientRequest.post(`/v2/namespaces/${namespace}`).pipe(
+            HttpClientRequest.bodyUint8Array(new Uint8Array(compressed), "application/json"),
+            HttpClientRequest.setHeader("Content-Encoding", "gzip"),
+            writeClient.execute,
+            Effect.asVoid,
+            Effect.mapError(toStoreError)
+          )
+        })
 
       const upsert = (rows: ReadonlyArray<UpsertRow>): Effect.Effect<void, StoreError> =>
         rows.length === 0

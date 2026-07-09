@@ -294,9 +294,10 @@ export class Indexer extends Context.Service<Indexer, {
               const ok = yield* store.upsert(rows).pipe(
                 Effect.as(true),
                 Effect.catch((error) =>
-                  Effect.logWarning("semantic-search: upsert failed, leaving files for retry next run", error).pipe(
-                    Effect.as(false)
-                  )
+                  Effect.logWarning(
+                    `semantic-search: upsert failed (rows=${rows.length}, files=${jobs.reduce((n, job) => n + job.paths.length, 0)}), leaving files for retry next run`,
+                    error
+                  ).pipe(Effect.as(false))
                 )
               )
               processed += rows.length
